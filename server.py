@@ -1,9 +1,8 @@
-"""OpenFishtest MVP API: local-only administration and public read-only snapshots.
+"""OpenFishtest API: Stockless-referenced tests and leased trusted workers.
 
-This prototype stores manually reported aggregate results. It does NOT run games,
-assign volunteer workers, verify engine binaries, or automatically archive PGNs.
+Worker results remain unverified until independent validation is available.
+The API should remain on localhost or a controlled private network for now.
 """
-import json
 import math
 import os
 import secrets
@@ -11,6 +10,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -104,6 +104,10 @@ class ReferenceInput(BaseModel):
 class TestInput(BaseModel):
     engine_id: int = Field(ge=1)
     games_target: int = Field(ge=2, le=1000000)
+    tc: str = Field(default="10+0.1", pattern=r"^[0-9]{1,5}(?:\:[0-5][0-9])?(?:\.[0-9]{1,3})?(?:\+[0-9]{1,4}(?:\.[0-9]{1,3})?)?$")
+    book_sha256: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    book_format: Literal["epd", "pgn"] = "epd"
+    batch_games: int = Field(default=20, ge=2, le=20)
 
 
 class ResultInput(BaseModel):
@@ -166,7 +170,7 @@ def snapshot():
     return {
         "project": "OpenFishtest",
         "updated_at": now_iso(),
-        "mode": "manual-results-mvp",
+        "mode": "fastchess-worker-prototype",
         "reference": engine_by_id.get(reference_id),
         "reference_rating": REFERENCE_RATING,
         "engines": leaderboard,
@@ -228,8 +232,8 @@ def create_test(body: TestInput, x_admin_token: str | None = Header(None)):
     require_admin(x_admin_token)
     if used_bytes() >= STOP_BYTES:
         raise HTTPException(507, "Data quota safety limit reached")
-    if body.games_target % 2 != 0:
-        raise HTTPException(422, "Paired-opening tests require an even game count")
+    if body.games_target % 2 != 0 or body.batch_games % 2 != 0:
+        raise HTTPException(422, "Paired-opening tests require even game counts")
     with connection() as db:
         reference_id = get_reference_id(db)
         if reference_id is None:
@@ -245,7 +249,12 @@ def create_test(body: TestInput, x_admin_token: str | None = Header(None)):
             "INSERT INTO tests(engine_id,reference_id,games_target,created_at) VALUES(?,?,?,?)",
             (body.engine_id, reference_id, body.games_target, now_iso())
         )
-        return {"id": cur.lastrowid, "status": "queued", "execution": "not_implemented"}
+        db.execute(
+            "INSERT INTO test_settings(test_id,tc,book_sha256,book_format,batch_games) VALUES(?,?,?,?,?)",
+            (cur.lastrowid, body.tc, body.book_sha256.lower() if body.book_sha256 else None,
+             body.book_format, body.batch_games)
+        )
+        return {"id": cur.lastrowid, "status": "queued", "execution": "fastchess_worker"}
 
 
 @app.put("/api/admin/tests/{test_id}/results")
@@ -260,9 +269,16 @@ def report_results(test_id: int, body: ResultInput,
             raise HTTPException(404, "Test not found")
         if total > row["games_target"]:
             raise HTTPException(422, "Results exceed requested game count")
+        if db.execute("SELECT 1 FROM jobs WHERE test_id=? LIMIT 1", (test_id,)).fetchone():
+            raise HTTPException(409, "Worker jobs exist; manual overwrite prohibited")
         status = "complete_unverified" if total == row["games_target"] else "partial_unverified"
         db.execute(
             "UPDATE tests SET wins=?,draws=?,losses=?,status=? WHERE id=?",
             (body.wins, body.draws, body.losses, status, test_id)
         )
     return {"id": test_id, "games_done": total, "status": status}
+
+
+# Persistent worker job queue and PGN result endpoints.
+from jobs_api import register_job_api
+register_job_api(app, connection, used_bytes, DATA_DIR)
