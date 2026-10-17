@@ -112,7 +112,7 @@ def command_for_job(job, config, output):
         "-engine", f"cmd={challenger_exe}", "name=Challenger", f"dir={challenger_exe.parent}",
         "-engine", f"cmd={stockless_exe}", "name=Stockless", f"dir={stockless_exe.parent}",
         "-each", "proto=uci", f"tc={job['tc']}",
-        "-rounds", str(games // 2), "-repeat",
+        "-games", "2", "-rounds", str(games // 2), "-repeat",
         "-concurrency", str(config["concurrency"]),
         "-ratinginterval", "0", "-autosaveinterval", "0",
         "-pgnout", f"file={output}", "notation=san", "append=false",
