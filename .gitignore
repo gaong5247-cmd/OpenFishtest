@@ -7,3 +7,8 @@ data/
 *.pgn
 *.zst
 .pytest_cache/
+
+# Local worker credentials, executables, outputs and downloaded books
+worker-config.json
+worker-results/
+*.epd
