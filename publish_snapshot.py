@@ -37,6 +37,20 @@ def publish(repo=DEFAULT_REPO):
     existing_sha = existing["sha"]
     # A static export should not claim to be live even if worker backend is online.
     public["published_via"] = "github-pages-snapshot"
+    # Avoid unnecessary GitHub commits every time a scheduler checks for updates.
+    # The timestamp is only refreshed if underlying data has actually changed.
+    try:
+        previous = json.loads(base64.b64decode(existing["content"]).decode("utf-8"))
+        new_data = {k: v for k, v in public.items() if k != "updated_at"}
+        old_data = {k: v for k, v in previous.items() if k != "updated_at"}
+        # DB/WAL byte usage fluctuates during read and is not a substantive result.
+        new_data.get("storage", {}).pop("used_bytes", None)
+        old_data.get("storage", {}).pop("used_bytes", None)
+        if new_data == old_data:
+            print("Public snapshot unchanged; no GitHub commit needed.")
+            return False
+    except (KeyError, ValueError, TypeError, UnicodeDecodeError):
+        pass
     encoded = json.dumps(public, ensure_ascii=False, indent=2, sort_keys=True)
     payload = {
         "message": "data: publish public OpenFishtest results snapshot",
