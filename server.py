@@ -30,11 +30,11 @@ ALLOWED_ORIGIN = os.getenv(
     "OPENFISHTEST_PUBLIC_ORIGIN", "https://gaong5247-cmd.github.io"
 )
 
-app = FastAPI(title="OpenFishtest", version="0.3.0")
+app = FastAPI(title="OpenFishtest", version="0.4.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[ALLOWED_ORIGIN],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Accept", "Content-Type"],
 )
 
@@ -138,7 +138,8 @@ def snapshot():
     """
     from collections import defaultdict
     from engine_stats import analyze
-    from public_games import recent_games
+    from public_games import recent_games, recent_arena_games
+    from arena_api import arena_public_summary
 
     used = used_bytes()
     with connection() as db:
@@ -243,7 +244,7 @@ def snapshot():
     return {
         "project": "OpenFishtest",
         "updated_at": now_iso(),
-        "mode": "worker_reported_results_v03",
+        "mode": "quarantined_arena_v04",
         "verification": "worker_reported_unverified",
         "reference": engine_by_id.get(reference_id),
         "reference_rating": REFERENCE_RATING,
@@ -251,7 +252,9 @@ def snapshot():
         "tests": all_tests,
         "workers": public_workers,
         "active_workers": live_workers,
-        "recent_games": recent_games(connection, DATA_DIR),
+        "recent_games": recent_arena_games(connection, DATA_DIR, 6) + recent_games(connection, DATA_DIR, 2),
+        "arena": arena_public_summary(connection),
+        "arena_rules": {"games": 100, "pass_points": 55.0, "score": "wins + 0.5*draws", "automatic_release": False},
         "statistics_notice": (
             "Provisional Elo and paired Gaussian SPRT are approximate; "
             "not FIDE/CCRL ratings or Stockfish GSPRT. "
@@ -463,3 +466,8 @@ def cancel_test(test_id: int, x_admin_token: str | None = Header(None)):
 # Persistent worker job queue and PGN result endpoints.
 from jobs_api import register_job_api
 register_job_api(app, connection, used_bytes, DATA_DIR, require_admin)
+
+# Public self-service ZIP submission; the HTTP server NEVER executes ZIPs.
+from arena_api import register_arena_api
+register_arena_api(app, connection, get_reference_id, used_bytes,
+                   DATA_DIR, require_admin, local_admin_only)
