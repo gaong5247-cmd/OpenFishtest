@@ -1,0 +1,43 @@
+name: "Request Stockless reference test"
+description: "Propose a fair test against the current Stockless reference build"
+title: "[TEST] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests require maintainer approval and actual trusted worker capacity.
+        Baseline Elo 3000 is arbitrary. Never report simulated game results.
+  - type: input
+    id: challenger
+    attributes:
+      label: Challenger engine name / version
+      placeholder: "RubiChess v2026.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: games
+    attributes:
+      label: Total games (paired)
+      options:
+        - "100"
+        - "200"
+        - "500"
+        - "1000"
+        - "2000"
+    validations:
+      required: true
+  - type: dropdown
+    id: tc
+    attributes:
+      label: Time control
+      options:
+        - "10+0.1"
+        - "60+0.6"
+        - "Other (explain below)"
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Why run this test?
+      description: "Mention opening book and any optional UCI settings."
