@@ -16,7 +16,7 @@ An independent, free, open-source **UCI chess engine testing prototype**.
 | Global volunteer enrollment | Admin-issued individual revocable tokens | A globally reachable **HTTPS API + sandboxing/rate limits** is still required before launching a public fleet |
 | Website engine registration requests | Browser form opens a pre-filled GitHub Issue | Maintainer manually approves engine builds and SHA-256 before execution |
 | Website test requests | Browser form opens a pre-filled GitHub Issue | Queueing games requires a maintainer approval and available CPU |
-| Recorded game board + PGN download | Yes, last 12 genuine locally available games | Completed PGNs are published in the static snapshot, not live move-by-move streaming |
+| Recorded game board + PGN download | Yes, last 8 genuine locally available games | Completed PGNs are published in the static snapshot, not live move-by-move streaming |
 | Elo intervals + SPRT | Yes, **approximate/experimental** | Wilson fractional-draw approximation for small/unpaired results; paired normal approximation and Gaussian SPRT are NOT official Fishtest GSPRT |
 | Worker contribution rankings | Yes, public aliases and completed job/game counts | Still worker-reported, not attested CPU computation |
 | Korean + English | Yes | Switch language on the public page |
@@ -40,7 +40,7 @@ Approved volunteers set their local OPENFISHTEST_WORKER_TOKEN environment variab
 
 ### Real PGN playback and statistics
 
-Worker PGNs are parsed with **python-chess** to reject illegal moves, count two-game reversed-color pairs, and build board FEN timelines. The browser can replay the last 12 *actual* recorded games, step by step, and download a small PGN; archived historical PGNs belong in GitHub Releases. The browser cannot independently prove who ran the engine or that non-mate results correspond to authentic resignations. The UI labels these as **worker-reported / unverified**.
+Worker PGNs are parsed with **python-chess** to reject illegal moves, count two-game reversed-color pairs, and build board FEN timelines. The browser can replay the last 8 *actual* recorded games, step by step, and download a small PGN; archived historical PGNs belong in GitHub Releases. The browser cannot independently prove who ran the engine or that non-mate results correspond to authentic resignations. The UI labels these as **worker-reported / unverified**.
 
 Published Elo differences are relative to **Stockless = 3000** only; they are not comparable to FIDE, CCRL, CEDR, or an across-hardware/TC rating pool. The 95% interval shown is an **approximation** (Wilson pseudo-Bernoulli score when no full pairs exist; Gaussian paired-score CI when sufficient data exist). The displayed sequential likelihood ratio compares Elo0=0 vs Elo1=5 with a **Gaussian pair model**; this is a **research prototype**, not the validated GSPRT implementation used in official Fishtest. See [official Fishtest statistics documentation](https://official-stockfish.github.io/docs/fishtest-wiki/Fishtest-Mathematics.html).
 
