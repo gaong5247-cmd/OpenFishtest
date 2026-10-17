@@ -107,6 +107,20 @@ function renderLeaderboard(data) {
     version.className = "engine-version";
     version.textContent = engine.version || "—";
     name.append(version);
+    if (typeof engine.source_url === "string") {
+      try {
+        const sourceUrl = new URL(engine.source_url);
+        if (sourceUrl.protocol === "https:") {
+          const link = document.createElement("a");
+          link.href = sourceUrl.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.className = "engine-source";
+          link.textContent = translate("engine_source");
+          name.append(link);
+        }
+      } catch (_) { /* Ignore malformed legacy URLs. */ }
+    }
     tableCell(tr, formatCount(engine.games));
     tableCell(tr, [engine.wins, engine.draws, engine.losses].map(formatCount).join(" / "));
     tableCell(tr, engine.rating == null ? "—" : formatCount(engine.rating), "align-right elo");
