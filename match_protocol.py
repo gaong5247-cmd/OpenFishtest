@@ -1,15 +1,18 @@
-"""Minimal shared PGN batch protocol for Fastchess workers.
+"""Paired PGN parsing with legal chess move validation.
 
-This checks game headers, pairing, and reported result accounting. It does NOT
-validate move legality, engine provenance or trusted hardware execution.
+This checks move legality and tag/result consistency for worker-submitted PGNs.
+A legal PGN is still NOT cryptographic proof that an engine honestly played.
 """
 import hashlib
-import re
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
+import chess
+import chess.pgn
+
 MAX_PGN_BYTES = 2_000_000
-HEADER_RE = re.compile(r'^\[([A-Za-z][A-Za-z0-9_]*)\s+"((?:\\.|[^"\\])*)"\]\s*$')
+MAX_PLIES_PER_GAME = 800
 
 
 class MatchValidationError(ValueError):
@@ -22,6 +25,7 @@ class MatchResult:
     draws: int
     losses: int
     games: int
+    penta: tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
 
 
 def sha256_path(filename: str | Path) -> str:
@@ -33,11 +37,12 @@ def sha256_path(filename: str | Path) -> str:
 
 
 def parse_pgn_results(pgn: bytes, expected_games: int) -> MatchResult:
-    """Count challenger results in complete paired Fastchess PGNs.
+    """Count results in paired Fastchess PGNs, verifying legal move sequences.
 
-    Names MUST be the canonical Fastchess names 'Challenger' and 'Stockless'.
-    Each consecutive pair must swap colors and start from the same FEN when
-    a FEN tag is present. This is metadata validation, not proof of fair play.
+    Names must be exactly 'Challenger' and 'Stockless'. Each consecutive
+    opening pair swaps colors and has the same starting board. Results remain
+    worker-reported; resignations and agreed draws cannot be independently
+    authenticated from PGN text.
     """
     if not pgn or len(pgn) > MAX_PGN_BYTES:
         raise MatchValidationError("Missing PGN or PGN exceeds 2 MB")
@@ -47,52 +52,81 @@ def parse_pgn_results(pgn: bytes, expected_games: int) -> MatchResult:
         data = pgn.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise MatchValidationError("PGN must be UTF-8 text") from exc
-    games: list[dict[str, str]] = []
-    current: dict[str, str] | None = None
-    for line in data.splitlines():
-        match = HEADER_RE.fullmatch(line.strip())
-        if not match:
-            continue
-        key, value = match.group(1), match.group(2)
-        if key == "Event":
-            if current is not None:
-                games.append(current)
-            current = {}
-        if current is not None:
-            if key in current:
-                raise MatchValidationError(f"Duplicate PGN header: {key}")
-            current[key] = value
 
-    if current is not None:
-        games.append(current)
-    if len(games) != expected_games:
-        raise MatchValidationError(
-            f"Expected {expected_games} PGN games, found {len(games)}"
+    stream = io.StringIO(data)
+    games = []
+    while True:
+        if len(games) >= expected_games:
+            try:
+                extra = chess.pgn.read_game(stream)
+            except (ValueError, chess.InvalidMoveError) as exc:
+                raise MatchValidationError("Malformed trailing PGN") from exc
+            if extra is not None:
+                raise MatchValidationError("More games than expected")
+            break
+        try:
+            game = chess.pgn.read_game(stream)
+        except (ValueError, chess.InvalidMoveError) as exc:
+            raise MatchValidationError("Malformed chess PGN") from exc
+        if game is None:
+            break
+        if game.errors:
+            raise MatchValidationError(f"Illegal or invalid moves: {game.errors[0]}")
+        headers = game.headers
+        white, black, result = (
+            headers.get("White"), headers.get("Black"), headers.get("Result")
         )
-
-    wins = draws = losses = 0
-    for idx, game in enumerate(games):
-        white = game.get("White")
-        black = game.get("Black")
-        result = game.get("Result")
         if {white, black} != {"Challenger", "Stockless"}:
             raise MatchValidationError(
                 "Game must contain precisely Challenger vs Stockless"
             )
         if result not in ("1-0", "0-1", "1/2-1/2"):
-            raise MatchValidationError(f"Invalid result in game {idx + 1}")
-        if idx % 2 == 1:
-            previous = games[idx - 1]
-            if white == previous["White"]:
-                raise MatchValidationError("Pair did not reverse engine colors")
-            if game.get("FEN") != previous.get("FEN"):
-                raise MatchValidationError("Both games in pair must share the opening FEN")
+            raise MatchValidationError("Invalid result in PGN")
+        try:
+            board = game.board()
+            initial_fen = board.fen(en_passant="fen")
+            ply_count = 0
+            for move in game.mainline_moves():
+                if not board.is_legal(move):
+                    raise MatchValidationError("Game has an illegal move")
+                board.push(move)
+                ply_count += 1
+                if ply_count > MAX_PLIES_PER_GAME:
+                    raise MatchValidationError("Game exceeds maximum ply count")
+            if not ply_count:
+                raise MatchValidationError("Game contains no moves")
+            # Check forced checkmates against declared Result (resign/draw
+            # outcomes are possible in non-terminal positions).
+            if board.is_checkmate():
+                winner = "0-1" if board.turn == chess.WHITE else "1-0"
+                if winner != result:
+                    raise MatchValidationError("Checkmate contradicts PGN Result")
+        except (ValueError, chess.InvalidMoveError) as exc:
+            raise MatchValidationError("Invalid initial chess position or moves") from exc
+
         if result == "1/2-1/2":
-            draws += 1
+            points = 1
         elif (result == "1-0" and white == "Challenger") or (
             result == "0-1" and black == "Challenger"
         ):
-            wins += 1
+            points = 2
         else:
-            losses += 1
-    return MatchResult(wins, draws, losses, len(games))
+            points = 0
+        games.append((white, black, initial_fen, result, points))
+
+    if len(games) != expected_games:
+        raise MatchValidationError(
+            f"Expected {expected_games} PGN games, found {len(games)}"
+        )
+    pentanomial = [0, 0, 0, 0, 0]
+    for i in range(0, len(games), 2):
+        a, b = games[i], games[i + 1]
+        if a[0] != b[1] or a[1] != b[0]:
+            raise MatchValidationError("Pair did not reverse engine colors")
+        if a[2] != b[2]:
+            raise MatchValidationError("Both games in pair must share the opening FEN")
+        pentanomial[a[4] + b[4]] += 1
+    wins = sum(g[4] == 2 for g in games)
+    draws = sum(g[4] == 1 for g in games)
+    losses = sum(g[4] == 0 for g in games)
+    return MatchResult(wins, draws, losses, len(games), tuple(pentanomial))

@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="OpenFishtest: transparent, community-driven UCI chess engine testing with Stockless as the reference.">
+  <meta name="description" content="OpenFishtest: free, transparent UCI chess-engine testing against the Stockless reference. Watch real PGNs and contribute CPU time.">
   <meta name="theme-color" content="#0b1020">
   <meta property="og:type" content="website">
   <meta property="og:title" content="OpenFishtest — Open Chess Engine Testing">
-  <meta property="og:description" content="A fair proving ground for UCI engines, using Stockless as a fixed reference.">
+  <meta property="og:description" content="A transparent proving ground for UCI engines with Stockless as a pinned reference.">
   <meta property="og:url" content="https://gaong5247-cmd.github.io/OpenFishtest/">
-  <title>OpenFishtest — Open engine testing</title>
+  <title>OpenFishtest — Community Chess Engine Testing</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -22,76 +22,170 @@
         <span>OPEN<span class="brand-accent">FISH</span>TEST</span>
       </a>
       <nav aria-label="Main navigation" class="nav-links">
-        <a href="#leaderboard">Leaderboard</a>
-        <a href="#tests">Tests</a>
-        <a href="#protocol">Protocol</a>
-        <a class="nav-repo" href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        <a href="#leaderboard" data-i18n="nav_rankings">Leaderboard</a>
+        <a href="#tests" data-i18n="nav_tests">Tests</a>
+        <a href="#games" data-i18n="nav_games">Watch games</a>
+        <a href="#workers" data-i18n="nav_workers">Workers</a>
+        <a href="#contribute" class="nav-repo" data-i18n="nav_join">Participate</a>
+        <button type="button" class="lang-button" id="lang-switch" aria-label="Switch language">한국어</button>
       </nav>
     </header>
 
     <main>
       <section class="hero">
-        <div class="eyebrow"><span class="pulse"></span> OPEN CHESS ENGINE TESTING / EARLY PREVIEW</div>
-        <h1>Let the engines<br><span>prove themselves.</span></h1>
-        <p class="hero-description">A public proving ground for UCI chess engines. Fair comparisons, reproducible results, and a fixed <strong>Stockless</strong> reference.</p>
+        <div class="eyebrow"><span class="pulse"></span><span data-i18n="hero_kicker">OPEN CHESS ENGINE TESTING · COMMUNITY PREVIEW</span></div>
+        <h1><span data-i18n="hero_line1">Let the engines</span><br><span data-i18n="hero_line2">prove themselves.</span></h1>
+        <p class="hero-description" data-i18n="hero_desc">A public proving ground for UCI chess engines. Open results, fair comparisons, and a fixed Stockless reference.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#leaderboard">Explore rankings <span aria-hidden="true">↗</span></a>
-          <a class="btn btn-outline" href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">Contribute on GitHub <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-primary" href="#leaderboard"><span data-i18n="hero_rankings">Explore rankings</span> <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-outline" href="#contribute"><span data-i18n="hero_join">Join the project</span> <span aria-hidden="true">↗</span></a>
         </div>
-        <div class="hero-foot"><span class="tiny-square"></span> Open data, honest testing. No invented Elo.</div>
+        <div class="hero-foot"><span class="tiny-square"></span><span data-i18n="hero_foot">Real games only. No invented engine ratings.</span></div>
       </section>
 
       <section class="status-panel" aria-label="Data connection status">
         <div class="connection"><span class="status-dot" id="connection-dot"></span>
-          <div><div id="connection-state" class="connection-title">Loading data…</div><div id="connection-detail" class="connection-subtitle">Connecting to public snapshot</div></div>
+          <div><div id="connection-state" class="connection-title">Loading results…</div><div id="connection-detail" class="connection-subtitle">Connecting to public snapshot</div></div>
         </div>
-        <button class="refresh" type="button" id="refresh-button" aria-label="Refresh results">↻ <span>Refresh</span></button>
+        <button class="refresh" type="button" id="refresh-button" aria-label="Refresh results">↻ <span data-i18n="refresh">Refresh results</span></button>
       </section>
 
-      <section class="stat-grid" aria-label="Overview statistics">
-        <article class="stat-card"><span class="stat-label">REFERENCE ENGINE</span><div class="stat-value">Stockless</div><span class="stat-note" id="reference-version">Not pinned yet</span><span class="stat-card-icon" aria-hidden="true">♞</span></article>
-        <article class="stat-card"><span class="stat-label">BASELINE ELO</span><div class="stat-value stat-numeric">3,000<span class="rating-note">*</span></div><span class="stat-note">Relative anchor only</span><span class="stat-card-icon" aria-hidden="true">◎</span></article>
-        <article class="stat-card"><span class="stat-label">REGISTERED ENGINES</span><div class="stat-value stat-numeric" id="engine-count">—</div><span class="stat-note">Approved builds</span><span class="stat-card-icon" aria-hidden="true">▦</span></article>
-        <article class="stat-card"><span class="stat-label">RECORDED GAMES</span><div class="stat-value stat-numeric" id="game-count">—</div><span class="stat-note">From submitted test results</span><span class="stat-card-icon" aria-hidden="true">◈</span></article>
+      <section class="stat-grid stats-five" aria-label="Overview statistics">
+        <article class="stat-card"><span class="stat-label" data-i18n="stat_reference">REFERENCE ENGINE</span><div class="stat-value">Stockless</div><span class="stat-note" id="reference-version">Not pinned yet</span><span class="stat-card-icon" aria-hidden="true">♞</span></article>
+        <article class="stat-card"><span class="stat-label" data-i18n="stat_rating">REFERENCE ELO</span><div class="stat-value stat-numeric">3,000<span class="rating-note">*</span></div><span class="stat-note" data-i18n="stat_anchor">Arbitrary relative baseline</span><span class="stat-card-icon" aria-hidden="true">◎</span></article>
+        <article class="stat-card"><span class="stat-label" data-i18n="stat_engines">REGISTERED BUILDS</span><div class="stat-value stat-numeric" id="engine-count">—</div><span class="stat-note" data-i18n="stat_count">Approved engine builds</span><span class="stat-card-icon" aria-hidden="true">▦</span></article>
+        <article class="stat-card"><span class="stat-label" data-i18n="stat_games">RECORDED GAMES</span><div class="stat-value stat-numeric" id="game-count">—</div><span class="stat-note" data-i18n="stat_game_note">Actual submitted results</span><span class="stat-card-icon" aria-hidden="true">◈</span></article>
+        <article class="stat-card"><span class="stat-label" data-i18n="stat_workers">ACTIVE WORKERS</span><div class="stat-value stat-numeric" id="worker-count">—</div><span class="stat-note" data-i18n="stat_worker_note">Assigned active workers</span><span class="stat-card-icon" aria-hidden="true">♙</span></article>
       </section>
 
       <section id="leaderboard" class="section-card">
         <div class="section-heading">
-          <div><span class="section-kicker">01 / ENGINE RATINGS</span><h2>Leaderboard</h2><p>All ratings are relative to the pinned Stockless reference build.</p></div>
-          <label class="search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="engine-search" placeholder="Search engines" aria-label="Search engines"></label>
+          <div><span class="section-kicker" data-i18n="rank_kicker">01 / ENGINE STANDINGS</span><h2 data-i18n="rank_title">Engine leaderboard</h2><p data-i18n="rank_description">All Elo values are provisional and relative to the pinned Stockless build.</p></div>
+          <label class="search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="engine-search" placeholder="Search engine name" data-i18n-placeholder="rank_search" aria-label="Search engines"></label>
         </div>
         <div class="table-scroll">
-          <table><thead><tr><th>RANK</th><th>ENGINE / BUILD</th><th>GAMES</th><th>W / D / L</th><th class="align-right">RELATIVE ELO</th></tr></thead><tbody id="leaderboard-rows"><tr><td class="empty-state" colspan="5">Loading engines…</td></tr></tbody></table>
+          <table>
+            <thead><tr><th>RANK</th><th data-i18n="rank_engine">ENGINE / BUILD</th><th data-i18n="rank_games">GAMES</th><th data-i18n="rank_wdl">W / D / L</th><th class="align-right" data-i18n="rank_elo">RELATIVE ELO</th><th class="align-right" data-i18n="rank_ci">95% CI (APPROX.)</th></tr></thead>
+            <tbody id="leaderboard-rows"><tr><td class="empty-state" colspan="6">Loading engines…</td></tr></tbody>
+          </table>
         </div>
-        <div class="table-footer">* 3000 Elo is an arbitrary reference coordinate, not FIDE, CCRL or CEDR rating. Early manual results are not independently verified.</div>
+        <div class="table-footer" data-i18n="rank_footer">* 3000 is an arbitrary reference coordinate, not a FIDE, CCRL or CEDR rating. Approximate statistical intervals are exploratory; submissions are unverified.</div>
       </section>
 
       <section id="tests" class="section-card">
         <div class="section-heading">
-          <div><span class="section-kicker">02 / TEST ACTIVITY</span><h2>Test runs</h2><p>Transparent reports against Stockless. Automated games and worker scheduling are under development.</p></div>
-          <div class="filter-group" role="group" aria-label="Filter tests"><button class="filter active" data-filter="all">All</button><button class="filter" data-filter="queued">Queued</button><button class="filter" data-filter="complete">Reported</button></div>
+          <div><span class="section-kicker" data-i18n="test_kicker">02 / ENGINE MATCHES</span><h2 data-i18n="test_title">Test runs</h2><p data-i18n="test_description">Progress from approved UCI workers. Results are worker-reported, not independently verified.</p></div>
+          <div class="filter-group" role="group" aria-label="Filter tests"><button type="button" class="filter active" data-filter="all" data-i18n="test_all">All</button><button type="button" class="filter" data-filter="queued" data-i18n="test_queued">Pending</button><button type="button" class="filter" data-filter="complete" data-i18n="test_reported">Reported</button></div>
         </div>
         <div class="table-scroll">
-          <table><thead><tr><th>TEST</th><th>MATCHUP</th><th>GAMES</th><th>W / D / L</th><th class="align-right">STATUS</th></tr></thead><tbody id="test-rows"><tr><td class="empty-state" colspan="5">Loading tests…</td></tr></tbody></table>
+          <table>
+            <thead><tr><th data-i18n="test_id">TEST</th><th data-i18n="test_match">MATCHUP</th><th data-i18n="test_games">GAMES</th><th data-i18n="test_score">W / D / L</th><th data-i18n="test_sprt">SPRT (EXP.)</th><th class="align-right" data-i18n="test_status">STATUS</th></tr></thead>
+            <tbody id="test-rows"><tr><td class="empty-state" colspan="6">Loading tests…</td></tr></tbody>
+          </table>
         </div>
       </section>
 
+      <section id="games" class="section-card">
+        <div class="section-heading">
+          <div><span class="section-kicker" data-i18n="watch_kicker">03 / REAL MATCH REPLAYS</span><h2 data-i18n="watch_title">Watch completed games</h2><p data-i18n="watch_description">Only genuine submitted PGNs are shown. Select a recent game, step through the moves and download its PGN.</p></div>
+          <label class="game-select-wrap"><span data-i18n="watch_select">Select a game</span><select id="game-selector" aria-label="Select recorded PGN"><option value="">No games yet</option></select></label>
+        </div>
+        <div id="games-empty" class="empty-state" data-i18n="watch_empty">No real PGN games have been published yet. Run a trusted worker and publish a snapshot to populate this board.</div>
+        <div id="replay-content" class="replay-layout" hidden>
+          <div class="board-column">
+            <div id="chess-board" class="chess-board" role="img" aria-label="Recorded game chessboard"></div>
+            <div class="board-controls">
+              <button type="button" id="move-first" aria-label="First move" title="First move">⇤</button>
+              <button type="button" id="move-prev" aria-label="Previous move" title="Previous move">←</button>
+              <span id="move-progress" aria-live="polite">0 / 0</span>
+              <button type="button" id="move-next" aria-label="Next move" title="Next move">→</button>
+              <button type="button" id="move-last" aria-label="Last move" title="Last move">⇥</button>
+              <button type="button" id="flip-board" aria-label="Flip board" title="Flip board">⇅</button>
+            </div>
+          </div>
+          <div class="game-information">
+            <div class="game-player"><span id="game-white">White</span><span id="game-result">1-0</span><span id="game-black">Black</span></div>
+            <div class="game-meta"><span id="game-test"></span><span id="game-verification" data-i18n="watch_unverified">Worker report · not independently verified</span></div>
+            <div id="move-list" class="move-list" aria-label="Recorded moves"></div>
+            <div class="game-actions">
+              <button type="button" class="btn btn-primary" id="download-pgn"><span data-i18n="watch_download">Download PGN</span> ↓</button>
+              <span class="game-legal-note" data-i18n="watch_note">PGN legality is checked, but the site cannot prove which engine actually made the moves.</span>
+            </div>
+          </div>
+        </div>
+        <div class="game-archive-link"><a href="https://github.com/gaong5247-cmd/OpenFishtest/releases" target="_blank" rel="noopener noreferrer" data-i18n="archive_link">Browse older PGN archives ↗</a></div>
+      </section>
+
+      <section id="workers" class="section-card">
+        <div class="section-heading">
+          <div><span class="section-kicker" data-i18n="workers_kicker">04 / COMPUTE COMMUNITY</span><h2 data-i18n="workers_title">Volunteer workers</h2><p data-i18n="workers_description">Donate spare CPU time using an approved local UCI setup. Individual tokens can be revoked.</p></div>
+          <a href="#contribute" class="btn btn-outline" data-i18n="nav_join">Participate</a>
+        </div>
+        <div class="table-scroll">
+          <table><thead><tr><th>RANK</th><th data-i18n="workers_name">WORKER</th><th data-i18n="workers_completed">COMPLETED JOBS</th><th data-i18n="workers_games">CONTRIBUTED GAMES</th><th class="align-right" data-i18n="workers_last">LAST ACTIVITY</th></tr></thead>
+          <tbody id="worker-rows"><tr><td class="empty-state" colspan="5">Loading workers…</td></tr></tbody></table>
+        </div>
+        <div class="table-footer" data-i18n="workers_note">Only approved public aliases appear. Computer hostnames and worker tokens are never published.</div>
+      </section>
+
+      <section id="contribute" class="community-section">
+        <div class="protocol-heading"><span class="section-kicker" data-i18n="join_kicker">05 / GET INVOLVED</span><h2 data-i18n="join_title">Build the open testing network.</h2><p data-i18n="join_description">Submit a request through GitHub Issues. Submissions are reviewed before engine binaries or compute jobs are approved.</p></div>
+        <div class="community-grid">
+          <article class="form-card">
+            <div class="form-kicker">01 / ENGINE</div>
+            <h3 data-i18n="form_engine_title">Register an engine</h3>
+            <p data-i18n="form_engine_desc">Propose any UCI engine to face the Stockless baseline.</p>
+            <form id="engine-form">
+              <label><span data-i18n="form_name">Engine name</span><input name="name" required maxlength="80" data-i18n-placeholder="form_name_hint" placeholder="e.g. RubiChess"></label>
+              <label><span data-i18n="form_version">Version / build</span><input name="version" required maxlength="80" data-i18n-placeholder="form_version_hint" placeholder="e.g. 2026.1"></label>
+              <label><span data-i18n="form_repo">Public source or release URL</span><input name="url" type="url" required maxlength="400" data-i18n-placeholder="form_repo_hint" placeholder="https://github.com/..."></label>
+              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_engine">Submit engine request</span> ↗</button>
+            </form>
+          </article>
+          <article class="form-card">
+            <div class="form-kicker">02 / TEST</div>
+            <h3 data-i18n="form_test_title">Request a test</h3>
+            <p data-i18n="form_test_desc">Request a color-reversed test against the pinned Stockless build.</p>
+            <form id="test-form">
+              <label><span data-i18n="form_test_engine">Challenger engine</span><input name="engine" required maxlength="80" data-i18n-placeholder="form_test_engine_hint" placeholder="Engine name / version"></label>
+              <div class="form-two"><label><span data-i18n="form_games">Target games</span><select name="games"><option>100</option><option>200</option><option>500</option><option>1000</option><option>2000</option></select></label>
+              <label><span data-i18n="form_tc">Time control</span><select name="tc"><option>10+0.1</option><option>60+0.6</option></select></label></div>
+              <label><span data-i18n="form_test_notes">Purpose (optional)</span><textarea name="purpose" rows="2" maxlength="600" data-i18n-placeholder="form_test_notes_hint" placeholder="Why should we compare these builds?"></textarea></label>
+              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_test">Submit test request</span> ↗</button>
+            </form>
+          </article>
+          <article class="form-card">
+            <div class="form-kicker">03 / WORKER</div>
+            <h3 data-i18n="form_worker_title">Contribute your CPU</h3>
+            <p data-i18n="form_worker_desc">Ask for an approved worker identity and get the setup instructions.</p>
+            <form id="worker-form">
+              <label><span data-i18n="form_worker_alias">Public alias</span><input name="alias" required maxlength="40" data-i18n-placeholder="form_worker_alias_hint" placeholder="Name shown on worker leaderboard"></label>
+              <label><span data-i18n="form_worker_os">Operating system</span><select name="os"><option>Windows</option><option>Linux</option><option>macOS</option></select></label>
+              <label><span data-i18n="form_worker_cpu">CPU description (optional)</span><input name="cpu" maxlength="100" data-i18n-placeholder="form_worker_cpu_hint" placeholder="e.g. 8 threads, Ryzen 7"></label>
+              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_worker">Apply to volunteer</span> ↗</button>
+            </form>
+          </article>
+        </div>
+        <p class="form-notice" data-i18n="form_github_notice">Opens a pre-filled GitHub Issue. A GitHub account is required. Nothing is registered or executed until approved.</p>
+      </section>
+
       <section id="protocol" class="protocol">
-        <div class="protocol-heading"><span class="section-kicker">03 / THE PRINCIPLES</span><h2>Built for honest engine testing.</h2><p>Stockless is the fixed reference, not a guaranteed winner.</p></div>
+        <div class="protocol-heading"><span class="section-kicker" data-i18n="method_kicker">06 / TEST METHODOLOGY</span><h2 data-i18n="method_title">Open results, clear limits.</h2><p data-i18n="method_desc">Stockless is the benchmark, never the presumed winner.</p></div>
         <div class="protocol-grid">
-          <article class="feature"><div class="feature-icon">01</div><h3>Fixed anchor</h3><p>Stockless builds are pinned by version and SHA-256. Results are always attributed to the exact reference used.</p></article>
-          <article class="feature"><div class="feature-icon">02</div><h3>Equal conditions</h3><p>Every scheduled match targets paired openings with reversed colors. Execution infrastructure is still being built.</p></article>
-          <article class="feature"><div class="feature-icon">03</div><h3>Public evidence</h3><p>Results, game counts, and test conditions should be published. Reported results remain marked unverified until workers can attest to them.</p></article>
+          <article class="feature"><div class="feature-icon">01</div><h3 data-i18n="method_one">Fixed reference</h3><p data-i18n="method_one_desc">Pinned Stockless version plus SHA-256. Every matchup has a known baseline.</p></article>
+          <article class="feature"><div class="feature-icon">02</div><h3 data-i18n="method_two">Paired openings</h3><p data-i18n="method_two_desc">Workers use reversed colors and the same starting position for each game pair.</p></article>
+          <article class="feature"><div class="feature-icon">03</div><h3 data-i18n="method_three">Evidence and uncertainty</h3><p data-i18n="method_three_desc">PGN replay, worker-reported W/D/L, approximate Elo CI and exploratory paired Gaussian SPRT. Not official Fishtest GSPRT.</p></article>
         </div>
       </section>
 
       <section class="cta-panel">
-        <div><span class="section-kicker">COMMUNITY POWERED</span><h2>The next great engine deserves a fair test.</h2><p>OpenFishtest is in early development. Follow the repository for new releases, volunteer worker support, and PGN archives.</p></div>
-        <a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer" class="btn btn-primary">View source <span aria-hidden="true">↗</span></a>
+        <div><span class="section-kicker">COMMUNITY POWERED</span><h2 data-i18n="cta_title">The next great engine deserves a fair test.</h2><p data-i18n="cta_desc">OpenFishtest is an independent early-stage project. Help add trusted engines, test results, and secure community workers.</p></div>
+        <a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer" class="btn btn-primary"><span data-i18n="cta_github">Explore source</span> ↗</a>
       </section>
     </main>
-    <footer><span>© OpenFishtest · Stockless Reference Project</span><span>Independent community project. Not affiliated with official Stockfish Fishtest.</span><a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">Source ↗</a></footer>
+    <footer><span>© OpenFishtest · Stockless Reference Project</span><span data-i18n="footer_independent">Independent community project; not affiliated with official Stockfish Fishtest.</span><a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">GitHub ↗</a></footer>
   </div>
+  <script src="./i18n.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

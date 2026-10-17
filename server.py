@@ -3,7 +3,8 @@
 Worker results remain unverified until independent validation is available.
 The API should remain on localhost or a controlled private network for now.
 """
-import math
+import json
+import time
 import os
 import secrets
 import sqlite3
@@ -12,9 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 DATA_DIR = Path(os.getenv("OPENFISHTEST_DATA", "data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -28,7 +30,7 @@ ALLOWED_ORIGIN = os.getenv(
     "OPENFISHTEST_PUBLIC_ORIGIN", "https://gaong5247-cmd.github.io"
 )
 
-app = FastAPI(title="OpenFishtest", version="0.1.0")
+app = FastAPI(title="OpenFishtest", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[ALLOWED_ORIGIN],
@@ -57,6 +59,7 @@ with connection() as db:
             name TEXT NOT NULL,
             version TEXT NOT NULL,
             sha256 TEXT NOT NULL,
+            source_url TEXT,
             approved INTEGER NOT NULL DEFAULT 1,
             UNIQUE(name, version, sha256)
         );
@@ -76,6 +79,9 @@ with connection() as db:
             created_at TEXT NOT NULL
         );
     """)
+    engine_cols = {r["name"] for r in db.execute("PRAGMA table_info(engines)")}
+    if "source_url" not in engine_cols:
+        db.execute("ALTER TABLE engines ADD COLUMN source_url TEXT")
 
 
 def now_iso():
@@ -95,6 +101,7 @@ class EngineInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     version: str = Field(min_length=1, max_length=80)
     sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    source_url: HttpUrl | None = None
 
 
 class ReferenceInput(BaseModel):
@@ -124,11 +131,20 @@ def get_reference_id(db):
 
 
 def snapshot():
+    """Publish real engine/test statistics, with explicit uncertainty labels.
+
+    No simulated matches. Workers and engine authors are never implicitly
+    trusted; all reported games remain unverified as to their origin.
+    """
+    from collections import defaultdict
+    from engine_stats import analyze
+    from public_games import recent_games
+
     used = used_bytes()
     with connection() as db:
         reference_id = get_reference_id(db)
         all_engines = [dict(r) for r in db.execute(
-            "SELECT id,name,version,sha256 FROM engines WHERE approved=1 ORDER BY id"
+            "SELECT id,name,version,sha256,source_url FROM engines WHERE approved=1 ORDER BY id"
         )]
         engine_by_id = {e["id"]: e for e in all_engines}
         all_tests = [dict(r) for r in db.execute(
@@ -141,40 +157,106 @@ def snapshot():
                 (reference_id,)
             )
         }
+        test_settings = {
+            r["test_id"]: dict(r) for r in db.execute("SELECT * FROM test_settings")
+        }
+        pair_by_test = defaultdict(lambda: [0] * 5)
+        pair_by_engine = defaultdict(lambda: [0] * 5)
+        for job in db.execute("""
+            SELECT j.test_id, j.penta_json, t.engine_id, t.reference_id
+            FROM jobs j JOIN tests t ON j.test_id=t.id
+            WHERE j.status='done' AND j.penta_json IS NOT NULL
+        """):
+            try:
+                values = json.loads(job["penta_json"])
+                if len(values) != 5 or any(
+                    not isinstance(v, int) or v < 0 for v in values
+                ):
+                    continue
+            except (ValueError, TypeError):
+                continue
+            for idx, amount in enumerate(values):
+                pair_by_test[job["test_id"]][idx] += amount
+                if job["reference_id"] == reference_id:
+                    pair_by_engine[job["engine_id"]][idx] += amount
+        workers = [dict(row) for row in db.execute("""
+            SELECT w.id, w.display_name, w.active,
+                   COUNT(CASE WHEN j.status='done' THEN 1 END) AS completed_jobs,
+                   COALESCE(SUM(CASE WHEN j.status='done' THEN j.games ELSE 0 END),0)
+                   AS games,
+                   MAX(CASE WHEN j.status='done' THEN j.completed_at END)
+                   AS last_completed
+            FROM workers w LEFT JOIN jobs j ON j.worker_id=w.id
+            GROUP BY w.id
+            ORDER BY games DESC, completed_jobs DESC, w.id
+            LIMIT 50
+        """)]
+        live_workers = db.execute(
+            "SELECT COUNT(DISTINCT worker_id) FROM jobs WHERE status='leased' "
+            "AND lease_expires > ?", (time.time(),)
+        ).fetchone()[0]
+
     leaderboard = []
     for engine in all_engines:
-        # Only count results reported against the current pinned Stockless build.
-        totals = aggregates.get(engine["id"], {}) if engine["id"] != reference_id else {}
+        is_ref = engine["id"] == reference_id
+        totals = aggregates.get(engine["id"], {}) if not is_ref else {}
         wins, draws, losses = (totals.get("wins", 0), totals.get("draws", 0),
                                totals.get("losses", 0))
-        games = wins + draws + losses
-        score = (wins + 0.5 * draws) / games if games else None
-        # This is a simple score-to-Elo conversion, NOT a statistically
-        # validated or cross-pool engine rating.
-        delta = (
-            round(400 * math.log10(score / (1 - score)))
-            if score is not None and 0 < score < 1 else None
+        stats = analyze(wins, draws, losses, pair_by_engine.get(engine["id"]))
+        offset = stats["elo_diff"]
+        # Avoid ranking a 1- or 2-game fluke as meaningful engine strength.
+        # Even 20 games are merely exploratory; always display uncertainty.
+        enough_for_display = stats["games"] >= 20
+        elo = REFERENCE_RATING if is_ref else (
+            round(REFERENCE_RATING + offset, 1)
+            if enough_for_display and offset is not None else None
         )
+        ci = [
+            round(REFERENCE_RATING + stats["ci95_low"], 1),
+            round(REFERENCE_RATING + stats["ci95_high"], 1)
+        ] if (not is_ref and enough_for_display and
+              stats["ci95_low"] is not None) else None
         leaderboard.append({
             "id": engine["id"], "name": engine["name"],
             "version": engine["version"],
-            "is_reference": engine["id"] == reference_id,
-            "games": games, "wins": wins, "draws": draws, "losses": losses,
-            "rating": REFERENCE_RATING if engine["id"] == reference_id
-            else REFERENCE_RATING + delta if delta is not None else None
+            "source_url": engine.get("source_url"),
+            "is_reference": is_ref,
+            "games": stats["games"], "wins": wins, "draws": draws, "losses": losses,
+            "rating": elo, "rating_ci95": ci,
+            "statistics": stats
         })
     for test in all_tests:
         test["engine_name"] = engine_by_id.get(test["engine_id"], {}).get("name", "Unknown")
         test["reference_name"] = engine_by_id.get(test["reference_id"], {}).get("name", "Unknown")
         test["games_done"] = test["wins"] + test["draws"] + test["losses"]
+        test["tc"] = test_settings.get(test["id"], {}).get("tc", "10+0.1")
+        test["statistics"] = analyze(
+            test["wins"], test["draws"], test["losses"], pair_by_test.get(test["id"])
+        )
+    # No raw worker token or machine hostnames are included in the public data.
+    public_workers = [
+        {"name": w["display_name"], "worker_id": w["id"],
+         "games": w["games"], "completed_jobs": w["completed_jobs"],
+         "last_completed": w["last_completed"]}
+        for w in workers if w["games"] > 0 or w["active"]
+    ]
     return {
         "project": "OpenFishtest",
         "updated_at": now_iso(),
-        "mode": "fastchess-worker-prototype",
+        "mode": "worker_reported_results_v03",
+        "verification": "worker_reported_unverified",
         "reference": engine_by_id.get(reference_id),
         "reference_rating": REFERENCE_RATING,
         "engines": leaderboard,
         "tests": all_tests,
+        "workers": public_workers,
+        "active_workers": live_workers,
+        "recent_games": recent_games(connection, DATA_DIR),
+        "statistics_notice": (
+            "Provisional Elo and paired Gaussian SPRT are approximate; "
+            "not FIDE/CCRL ratings or Stockfish GSPRT. "
+            "PGN moves are parsed as legal chess but engine origin is unverified."
+        ),
         "storage": {
             "used_bytes": used,
             "max_bytes": MAX_BYTES,
@@ -184,6 +266,44 @@ def snapshot():
             "accept_new_tests": used < STOP_BYTES,
         }
     }
+
+
+def local_admin_only(request: Request):
+    # This interface is intentionally not exposed through GitHub Pages.
+    # CAUTION: reverse proxies can obscure the original client's IP; never
+    # publish this development server directly on the public internet.
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1", "testclient"):
+        raise HTTPException(403, "Local administrator interface only")
+
+
+ADMIN_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
+    "connect-src 'self'; form-action 'self'; base-uri 'none'; "
+    "frame-ancestors 'none'; object-src 'none'"
+)
+
+
+@app.get("/admin")
+def local_admin_page(request: Request):
+    local_admin_only(request)
+    return FileResponse(
+        Path(__file__).parent / "admin_ui" / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control":"no-store", "Content-Security-Policy":ADMIN_CSP,
+                 "X-Content-Type-Options":"nosniff"}
+    )
+
+
+@app.get("/admin-ui/{filename}")
+def local_admin_asset(filename: str, request: Request):
+    local_admin_only(request)
+    if filename not in ("app.js", "style.css"):
+        raise HTTPException(404, "Unknown admin asset")
+    return FileResponse(
+        Path(__file__).parent / "admin_ui" / filename,
+        headers={"Cache-Control":"no-store", "X-Content-Type-Options":"nosniff"}
+    )
 
 
 @app.get("/api/health")
@@ -203,8 +323,9 @@ def register_engine(body: EngineInput, x_admin_token: str | None = Header(None))
     with connection() as db:
         try:
             cur = db.execute(
-                "INSERT INTO engines(name,version,sha256) VALUES(?,?,?)",
-                (body.name.strip(), body.version.strip(), body.sha256.lower())
+                "INSERT INTO engines(name,version,sha256,source_url) VALUES(?,?,?,?)",
+                (body.name.strip(), body.version.strip(), body.sha256.lower(),
+                 str(body.source_url) if body.source_url else None)
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Engine build already registered") from None
@@ -341,4 +462,4 @@ def cancel_test(test_id: int, x_admin_token: str | None = Header(None)):
 
 # Persistent worker job queue and PGN result endpoints.
 from jobs_api import register_job_api
-register_job_api(app, connection, used_bytes, DATA_DIR)
+register_job_api(app, connection, used_bytes, DATA_DIR, require_admin)

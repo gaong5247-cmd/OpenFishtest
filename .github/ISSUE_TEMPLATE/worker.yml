@@ -1,0 +1,39 @@
+name: "Volunteer CPU worker"
+description: "Apply for an individually-approved volunteer worker identity"
+title: "[WORKER] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Volunteer computers must use local, individually approved UCI executables.
+        Never post a worker token, IP address, personal information, or PC hostname.
+        A maintainer must arrange a safe endpoint; GitHub Pages itself cannot run the worker API.
+  - type: input
+    id: alias
+    attributes:
+      label: Public worker alias
+      description: "This alias may appear on the public contribution leaderboard."
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: Optional CPU / thread budget
+      description: "Public non-sensitive CPU category, not PC or account identifiers."
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Contribution policy
+      options:
+        - label: "I will only run binaries I approved myself and can stop the worker."
+          required: true

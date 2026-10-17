@@ -1,0 +1,35 @@
+name: "Register UCI engine"
+description: "Request maintainer review of a source-available chess engine"
+title: "[ENGINE] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenFishtest accepts UCI engines from many authors, but only maintainer-approved
+        builds may be run. Do not attach executables or paste secret tokens.
+  - type: input
+    id: engine-name
+    attributes:
+      label: Engine name
+      placeholder: RubiChess
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / build
+      placeholder: "2026.1"
+    validations:
+      required: true
+  - type: input
+    id: source-url
+    attributes:
+      label: Public source or release URL
+      placeholder: "https://github.com/owner/repo"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Platform and engine notes
+      description: "Mention supported systems, AVX requirements, NNUE external files and licenses."

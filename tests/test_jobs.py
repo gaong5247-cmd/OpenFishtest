@@ -169,3 +169,13 @@ def test_admin_pause_resume_cancel_revokes_leases(api):
     row = next(t for t in client.get("/api/public/snapshot").json()["tests"]
                if t["id"] == test_id)
     assert row["status"] == "cancelled"
+
+
+
+def test_worker_cannot_hoard_unlimited_job_leases(api):
+    client, _ = api
+    prepare_test(client, games=6, batch=2)
+    assert work(client, "/api/worker/claim", {"worker_id":"local_pc"}).status_code == 200
+    assert work(client, "/api/worker/claim", {"worker_id":"local_pc"}).status_code == 200
+    assert work(client, "/api/worker/claim", {"worker_id":"local_pc"}).status_code == 204
+    assert work(client, "/api/worker/claim", {"worker_id":"other_pc"}).status_code == 200
