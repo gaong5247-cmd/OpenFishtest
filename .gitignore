@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/
+.env
+*.sqlite3*
+*.pgn
+*.zst
+.pytest_cache/
