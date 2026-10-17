@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>OpenFishtest — Local Administrator</title>
+<link rel="stylesheet" href="/admin-ui/style.css">
+</head><body>
+<main class="container">
+<header><span class="brand">♞ OPEN<span>FISH</span>TEST</span><small>LOCAL ADMINISTRATOR · NOT A PUBLIC FORM</small></header>
+<h1>Control your testing network.</h1>
+<p class="muted">This page is served only from the self-hosted backend. Keep your administrator token private. Requests sent from the public github.io site are <strong>not</strong> granted administrative rights.</p>
+<section class="auth"><label for="admin-secret">Administrator secret</label><input type="password" id="admin-secret" autocomplete="off" placeholder="Paste OPENFISHTEST_ADMIN_TOKEN" spellcheck="false"><button id="load" type="button">Load server data</button></section>
+<div id="notice" role="status" aria-live="polite"></div>
+<div class="grid stats">
+<section class="panel"><h2>Reference</h2><div id="ref-version">Not pinned</div><p class="muted">Stockless is the only permitted baseline.</p></section>
+<section class="panel"><h2>Storage</h2><div id="storage">— / 5 GB</div><progress id="used" value="0" max="5000000000"></progress><p class="muted">Archive at 3 GB; pause new jobs at 4.25 GB.</p></section>
+</div>
+<div class="grid">
+<section class="panel"><h2>Register approved engine build</h2>
+<form id="engine-form">
+<label>Engine name <input name="name" maxlength="80" required placeholder="Stockless / RubiChess / ..."></label>
+<label>Version <input name="version" maxlength="80" required placeholder="v0.7"></label>
+<label>Real executable SHA-256 <input name="sha256" required pattern="[0-9a-fA-F]{64}" maxlength="64" placeholder="64 hex characters"></label>
+<button type="submit">Register build</button>
+</form>
+<p class="muted">Only enter SHA-256 for a build you have manually approved. Registration never downloads or runs files.</p>
+</section>
+<section class="panel"><h2>Pin Stockless baseline</h2>
+<form id="reference-form">
+<label>Registered Stockless build <select id="reference-choice" required></select></label>
+<button type="submit">Pin selected build</button>
+</form>
+<p class="muted">Changing the baseline resets relative comparisons to that exact version; historical matches remain recorded separately.</p>
+</section>
+<section class="panel"><h2>Queue color-reversed test</h2>
+<form id="test-form">
+<label>Approved challenger <select id="challenger-choice" required></select></label>
+<div class="split"><label>Total games <input name="games" type="number" min="2" max="1000000" step="2" value="100" required></label>
+<label>Games per job <select name="batch"><option>2</option><option>4</option><option>10</option><option selected>20</option></select></label></div>
+<label>Time control <select name="tc"><option value="10+0.1">10+0.1</option><option value="60+0.6">60+0.6</option></select></label>
+<label>Optional opening book SHA-256 <input name="book" pattern="[a-fA-F0-9]{64}" maxlength="64" placeholder="Leave blank only for smoke tests"></label>
+<button type="submit">Queue test</button>
+</form>
+</section>
+<section class="panel"><h2>Approve volunteer worker</h2>
+<form id="worker-form">
+<label>Worker ID (3–40 ASCII letters/numbers/_/-) <input name="worker_id" required maxlength="40" pattern="[a-zA-Z0-9_-]{3,40}" placeholder="volunteer_01"></label>
+<label>Public display alias <input name="display_name" required maxlength="48" placeholder="Chess Lab"></label>
+<button type="submit">Generate unique worker token</button>
+</form>
+<div id="issued-token" class="secret-box" hidden><strong>One-time worker secret</strong><pre id="issued-text"></pre><button id="copy-token" type="button">Copy secret</button><p class="muted">Show this only to the approved worker. It cannot be retrieved later.</p></div>
+</section>
+</div>
+<section class="panel"><h2>Manage tests</h2><div class="scroll"><table><thead><tr><th>ID</th><th>Matchup</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody id="test-rows"><tr><td colspan="5">Load server data first</td></tr></tbody></table></div></section>
+<section class="panel"><h2>Worker credentials</h2><div class="scroll"><table><thead><tr><th>ID</th><th>Public alias</th><th>State</th><th>Actions</th></tr></thead><tbody id="worker-rows"><tr><td colspan="4">Load server data first</td></tr></tbody></table></div></section>
+<footer><a href="https://github.com/gaong5247-cmd/OpenFishtest">Open source repository ↗</a> · Actions requiring real engine computation still need a trusted local Fastchess worker.</footer>
+</main>
+<script src="/admin-ui/app.js" defer></script>
+</body></html>
