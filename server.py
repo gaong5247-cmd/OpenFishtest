@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -254,6 +255,44 @@ def snapshot():
             "accept_new_tests": used < STOP_BYTES,
         }
     }
+
+
+def local_admin_only(request: Request):
+    # This interface is intentionally not exposed through GitHub Pages.
+    # CAUTION: reverse proxies can obscure the original client's IP; never
+    # publish this development server directly on the public internet.
+    host = request.client.host if request.client else ""
+    if host not in ("127.0.0.1", "::1", "testclient"):
+        raise HTTPException(403, "Local administrator interface only")
+
+
+ADMIN_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
+    "connect-src 'self'; form-action 'self'; base-uri 'none'; "
+    "frame-ancestors 'none'; object-src 'none'"
+)
+
+
+@app.get("/admin")
+def local_admin_page(request: Request):
+    local_admin_only(request)
+    return FileResponse(
+        Path(__file__).parent / "admin_ui" / "index.html",
+        media_type="text/html",
+        headers={"Cache-Control":"no-store", "Content-Security-Policy":ADMIN_CSP,
+                 "X-Content-Type-Options":"nosniff"}
+    )
+
+
+@app.get("/admin-ui/{filename}")
+def local_admin_asset(filename: str, request: Request):
+    local_admin_only(request)
+    if filename not in ("app.js", "style.css"):
+        raise HTTPException(404, "Unknown admin asset")
+    return FileResponse(
+        Path(__file__).parent / "admin_ui" / filename,
+        headers={"Cache-Control":"no-store", "X-Content-Type-Options":"nosniff"}
+    )
 
 
 @app.get("/api/health")
