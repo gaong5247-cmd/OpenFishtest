@@ -279,6 +279,66 @@ def report_results(test_id: int, body: ResultInput,
     return {"id": test_id, "games_done": total, "status": status}
 
 
+@app.post("/api/admin/tests/{test_id}/pause")
+def pause_test(test_id: int, x_admin_token: str | None = Header(None)):
+    """Revoke current job leases and keep unfinished work available for resume."""
+    require_admin(x_admin_token)
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        test = db.execute("SELECT status FROM tests WHERE id=?", (test_id,)).fetchone()
+        if not test:
+            raise HTTPException(404, "Test not found")
+        if test["status"] not in ("queued", "running", "worker_error"):
+            raise HTTPException(409, "Test cannot be paused in this state")
+        db.execute("UPDATE tests SET status='paused' WHERE id=?", (test_id,))
+        db.execute(
+            "UPDATE jobs SET status='queued',lease_id=NULL,lease_expires=0 "
+            "WHERE test_id=? AND status='leased'",
+            (test_id,)
+        )
+    return {"id": test_id, "status": "paused"}
+
+
+@app.post("/api/admin/tests/{test_id}/resume")
+def resume_test(test_id: int, x_admin_token: str | None = Header(None)):
+    """Allow manually paused or worker-error jobs to be reassigned."""
+    require_admin(x_admin_token)
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        test = db.execute("SELECT status FROM tests WHERE id=?", (test_id,)).fetchone()
+        if not test:
+            raise HTTPException(404, "Test not found")
+        if test["status"] not in ("paused", "worker_error"):
+            raise HTTPException(409, "Only paused or worker_error tests can resume")
+        db.execute(
+            "UPDATE jobs SET status='queued',lease_id=NULL,lease_expires=0,"
+            "attempts=0 WHERE test_id=? AND status='failed'",
+            (test_id,)
+        )
+        db.execute("UPDATE tests SET status='queued' WHERE id=?", (test_id,))
+    return {"id": test_id, "status": "queued"}
+
+
+@app.post("/api/admin/tests/{test_id}/cancel")
+def cancel_test(test_id: int, x_admin_token: str | None = Header(None)):
+    """Permanently stop a test and revoke all unfinished jobs."""
+    require_admin(x_admin_token)
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        test = db.execute("SELECT status FROM tests WHERE id=?", (test_id,)).fetchone()
+        if not test:
+            raise HTTPException(404, "Test not found")
+        if test["status"] not in ("queued", "running", "paused", "worker_error"):
+            raise HTTPException(409, "Test cannot be cancelled in this state")
+        db.execute("UPDATE tests SET status='cancelled' WHERE id=?", (test_id,))
+        db.execute(
+            "UPDATE jobs SET status='cancelled',lease_id=NULL,lease_expires=0 "
+            "WHERE test_id=? AND status IN ('queued','leased','failed')",
+            (test_id,)
+        )
+    return {"id": test_id, "status": "cancelled"}
+
+
 # Persistent worker job queue and PGN result endpoints.
 from jobs_api import register_job_api
 register_job_api(app, connection, used_bytes, DATA_DIR)
