@@ -379,15 +379,27 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
     @app.post("/api/arena/submit", status_code=201)
     async def upload_engine(
         request: Request,
-        engine_name: str = Query(min_length=1, max_length=80),
-        engine_version: str = Query(min_length=1, max_length=60),
-        source_url: str | None = Query(default=None, max_length=350)
+        engine_name: str | None = Query(default=None, max_length=80),
+        engine_version: str | None = Query(default=None, max_length=60),
+        source_url: str | None = Query(default=None, max_length=350),
+        book_sha256: str | None = Query(
+            default=None, pattern=r"^[0-9a-fA-F]{64}$"
+        )
     ):
-        reference, book, issue = arena_ready()
+        # No user-entered engine name, version, hash or UCI settings needed.
+        # Engine identity comes from a restricted probe inside the arena VM.
+        reference, book, issue = arena_ready(
+            book_sha256.lower() if book_sha256 else None
+        )
         if issue:
             raise HTTPException(503, issue)
-        if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/zip":
-            raise HTTPException(415, "Send raw ZIP bytes with Content-Type: application/zip")
+        if request.headers.get("content-type", "").split(";")[0].strip().lower() not in (
+            "application/zip", "application/octet-stream",
+            "application/x-msdownload", "application/vnd.microsoft.portable-executable"
+        ):
+            raise HTTPException(
+                415, "Send a raw x86_64 Windows EXE or Linux ELF ZIP"
+            )
         if source_url:
             parsed = urlsplit(source_url)
             if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
@@ -404,10 +416,8 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         # reverse proxy/uvicorn setup may normalize request.client.host.
         ip = request.client.host if request.client else "unknown"
         ip_hash = hmac.new(salt, ip.encode(), hashlib.sha256).hexdigest()
-        name = engine_name.strip()
-        version = engine_version.strip()
-        if not name or not version:
-            raise HTTPException(422, "Engine name and version cannot be blank")
+        name = (engine_name or "").strip() or "UCI detection pending"
+        version = (engine_version or "").strip() or "automatic"
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             recent = db.execute(
@@ -423,15 +433,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             ).fetchone()[0]
             if waiting >= MAX_QUEUED:
                 raise HTTPException(503, "Arena queue is full")
-            duplicate = db.execute(
-                "SELECT id FROM arena_entries WHERE ip_hash=? AND "
-                "engine_name=? AND engine_version=? AND status "
-                "IN ('uploading','queued','running')",
-                (ip_hash, name, version)
-            ).fetchone()
-            if duplicate:
-                raise HTTPException(409, "An identical engine submission is already pending")
-            cursor = db.execute("""
+             cursor = db.execute("""
                 INSERT INTO arena_entries(
                     engine_name,engine_version,source_url,ip_hash,
                     reference_id,reference_sha256,reference_version,
@@ -443,7 +445,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             entry_id = cursor.lastrowid
 
         temp_path = uploads_dir / f"{entry_id}.incoming"
-        destination = uploads_dir / f"{entry_id}.zip"
+        destination = None
         digest = hashlib.sha256()
         size = 0
         try:
@@ -451,24 +453,34 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 async for part in request.stream():
                     size += len(part)
                     if size > MAX_UPLOAD_BYTES:
-                        raise HTTPException(413, "ZIP upload exceeds 128 MiB")
+                        raise HTTPException(413, "EXE/ZIP upload exceeds 128 MiB")
                     if used_bytes() + len(part) > 4_250_000_000:
                         raise HTTPException(507, "Arena storage budget exceeded")
                     output.write(part)
                     digest.update(part)
                 if size < 64:
-                    raise HTTPException(422, "Upload is not a valid ZIP archive")
+                    raise HTTPException(422, "Upload is not a valid EXE/ZIP archive")
                 output.flush()
                 os.fsync(output.fileno())
-            details = validate_archive(temp_path)
+            details = inspect_candidate(temp_path)
+            if details.platform == "windows_x86_64" and (
+                os.getenv("OPENFISHTEST_WINDOWS_ARENA") != "1"
+            ):
+                raise HTTPException(
+                    503, "Windows EXE sandbox unavailable; configure the "
+                         "dedicated rootless Wine VM runner first"
+                )
+            ext = ".exe" if details.platform == "windows_x86_64" else ".zip"
+            destination = uploads_dir / f"{entry_id}{ext}"
             # Content digest is for reproducibility, not a guarantee of safety.
             os.replace(temp_path, destination)
             with connection() as db:
                 db.execute(
                     "UPDATE arena_entries SET status='queued',archive_path=?,"
-                    "archive_sha256=?,engine_sha256=?,archive_bytes=? WHERE id=?",
+                    "archive_sha256=?,engine_sha256=?,archive_bytes=?,"
+                    "engine_platform=? WHERE id=?",
                     (str(destination.relative_to(data_dir)), digest.hexdigest(),
-                     details.engine_sha256, size, entry_id)
+                     details.engine_sha256, size, details.platform, entry_id)
                 )
                 db.execute(
                     "INSERT INTO arena_events(arena_id,kind,summary,created_at) "
@@ -479,11 +491,15 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 "id": entry_id, "status": "queued", "games": GAMES,
                 "pass_points": PASS_SCORE_X2 / 2,
                 "archive_sha256": digest.hexdigest(),
-                "note": "Submitted build is quarantined; not executed by public volunteer workers"
+                "engine_platform": details.platform,
+                "engine_sha256": details.engine_sha256,
+                "note": "SHA-256 computed automatically; UCI identity will be probed "
+                        "inside isolated VM. No volunteer PC execution."
             }
         except (UnsafeArchive, OSError, HTTPException, ValueError) as exc:
             for path in (temp_path, destination):
-                path.unlink(missing_ok=True)
+                if path is not None:
+                    path.unlink(missing_ok=True)
             with connection() as db:
                 db.execute(
                     "UPDATE arena_entries SET status='invalid',archive_path=NULL,"
@@ -500,7 +516,8 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         with connection() as db:
             return [dict(r) for r in db.execute(
                 "SELECT id,engine_name,engine_version,source_url,"
-                "archive_sha256,engine_sha256,archive_bytes,"
+                "archive_sha256,engine_sha256,archive_bytes,engine_platform,"
+                "uci_name,uci_author,uci_options_json,"
                 "reference_version,reference_sha256,book_sha256,"
                 "status,wins,draws,losses,score,created_at,completed_at,"
                 "released_url,error_class,archive_path,pgn_path "
@@ -540,8 +557,11 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         if sha256_path(file_path) != entry["archive_sha256"]:
             raise HTTPException(409, "Candidate integrity check failed")
         return FileResponse(
-            file_path, media_type="application/zip",
-            filename=f"OpenFishtest-candidate-{entry_id}-QUARANTINED.zip",
+            file_path, media_type="application/octet-stream",
+            filename=(
+                f"OpenFishtest-candidate-{entry_id}-QUARANTINED"
+                f"{file_path.suffix}"
+            ),
             headers={"Cache-Control":"no-store", "X-Content-Type-Options":"nosniff"}
         )
 
