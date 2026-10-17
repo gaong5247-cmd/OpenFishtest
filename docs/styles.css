@@ -100,3 +100,29 @@
 .arena-admin-link:hover{text-decoration:underline}
 @media(max-width:1050px){.arena-grid{grid-template-columns:1fr}.arena-rules{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.arena-rule strong{font-size:18px}.arena-rules{gap:8px}.arena-rule{padding:12px}.arena-grid{gap:12px}.arena-grid .form-card{padding:18px}.arena-table{min-width:460px}}
+
+
+/* Auto-detect UCI engine + opening book drag/drop v0.5 */
+.arena-automated-note{
+  border:1px solid #366f66;background:#163a32;border-radius:9px;
+  padding:12px 13px;color:#9bf2d8;font-size:11px;line-height:1.6;
+}
+.arena-drop-zone{
+  border:2px dashed #3c7181;background:#0d1d2f;border-radius:14px;
+  padding:25px 18px;display:flex;flex-direction:column;align-items:center;
+  gap:7px;text-align:center;color:#bcd1e2;cursor:pointer;transition:.18s;
+  outline:none;min-height:150px;justify-content:center
+}
+.arena-drop-zone .drop-icon{font-size:32px;color:#70e6c8}
+.arena-drop-zone strong{color:#f0fbfd;font-size:16px;line-height:1.25}
+.arena-drop-zone span:not(.drop-icon){font-size:11px;line-height:1.5}
+.arena-drop-zone .drop-file-name{font-weight:750;color:#70e6c8;font-size:12px!important;overflow-wrap:anywhere}
+.arena-drop-zone:hover,.arena-drop-zone.drag-over,.arena-drop-zone:focus-visible{
+  border-color:#78ebd1;background:#183e41;box-shadow:0 0 0 3px #60e9c41a
+}
+.arena-drop-zone.selected{border-color:#5ce3c4;border-style:solid;background:#12332f}
+.arena-book-zone{min-height:125px;gap:5px;border-color:#46526c;background:#131c30}
+.arena-book-zone .drop-icon{font-size:26px;color:#9fb8ee}
+.arena-book-zone.selected{border-color:#9abdf6;background:#1e2e4c}
+.arena-upload-card input[hidden]{display:none}
+@media(max-width:640px){.arena-drop-zone{padding:22px 13px}.arena-drop-zone strong{font-size:14px}}
