@@ -6,10 +6,10 @@ const $ = id => document.getElementById(id);
 const dictionaries = window.OPENFISHTEST_LOCALES || {en: {}};
 const getSavedLanguage = () => {
   try {
-    return localStorage.getItem("openfishtest-language") === "ko" ? "ko" : "en";
-  } catch (_) {
-    return "en";
-  }
+    const saved = localStorage.getItem("openfishtest-language");
+    if (saved === "ko" || saved === "en") return saved;
+  } catch (_) {}
+  return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
 };
 let language = getSavedLanguage();
 const translate = key => dictionaries[language]?.[key] || dictionaries.en?.[key] || key;
