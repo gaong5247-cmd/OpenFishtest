@@ -8,7 +8,7 @@ from pathlib import Path
 
 import chess.pgn
 
-MAX_PUBLIC_GAMES = 12
+MAX_PUBLIC_GAMES = 8
 MAX_PUBLIC_PLIES = 500
 MAX_PGN_SOURCE = 400_000
 
