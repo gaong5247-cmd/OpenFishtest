@@ -212,6 +212,14 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path,
                 "worker_id=NULL WHERE status='leased' AND lease_expires < ?",
                 (now,)
             )
+            # A single worker must not claim an unbounded number of matches.
+            outstanding = db.execute(
+                "SELECT COUNT(*) FROM jobs WHERE status='leased' AND "
+                "worker_id=? AND lease_expires >= ?",
+                (body.worker_id, now)
+            ).fetchone()[0]
+            if outstanding >= 2:
+                return Response(status_code=204)
             job = db.execute("""
                 SELECT j.* FROM jobs j JOIN tests t ON t.id=j.test_id
                 WHERE j.status='queued' AND t.status IN ('queued','running')
