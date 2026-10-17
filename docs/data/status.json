@@ -1,0 +1,17 @@
+{
+  "project": "OpenFishtest",
+  "updated_at": null,
+  "mode": "static-snapshot",
+  "reference": null,
+  "reference_rating": 3000,
+  "engines": [],
+  "tests": [],
+  "storage": {
+    "used_bytes": 0,
+    "max_bytes": 5000000000,
+    "archive_start_bytes": 3000000000,
+    "stop_bytes": 4250000000,
+    "archive_recommended": false,
+    "accept_new_tests": false
+  }
+}
