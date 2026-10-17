@@ -433,7 +433,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             ).fetchone()[0]
             if waiting >= MAX_QUEUED:
                 raise HTTPException(503, "Arena queue is full")
-             cursor = db.execute("""
+            cursor = db.execute("""
                 INSERT INTO arena_entries(
                     engine_name,engine_version,source_url,ip_hash,
                     reference_id,reference_sha256,reference_version,
