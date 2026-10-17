@@ -130,17 +130,20 @@ def snapshot():
         all_tests = [dict(r) for r in db.execute(
             "SELECT * FROM tests ORDER BY id DESC LIMIT 100"
         )]
+        aggregates = {
+            r["engine_id"]: dict(r) for r in db.execute(
+                "SELECT engine_id, SUM(wins) AS wins, SUM(draws) AS draws, "
+                "SUM(losses) AS losses FROM tests WHERE reference_id=? GROUP BY engine_id",
+                (reference_id,)
+            )
+        }
     leaderboard = []
     for engine in all_engines:
         # Only count results reported against the current pinned Stockless build.
-        games = wins = draws = losses = 0
-        if engine["id"] != reference_id:
-            for test in all_tests:
-                if test["engine_id"] == engine["id"] and test["reference_id"] == reference_id:
-                    wins += test["wins"]
-                    draws += test["draws"]
-                    losses += test["losses"]
-            games = wins + draws + losses
+        totals = aggregates.get(engine["id"], {}) if engine["id"] != reference_id else {}
+        wins, draws, losses = (totals.get("wins", 0), totals.get("draws", 0),
+                               totals.get("losses", 0))
+        games = wins + draws + losses
         score = (wins + 0.5 * draws) / games if games else None
         # This is a simple score-to-Elo conversion, NOT a statistically
         # validated or cross-pool engine rating.
