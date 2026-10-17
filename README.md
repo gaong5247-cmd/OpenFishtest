@@ -6,7 +6,47 @@ An independent, free, open-source **UCI chess engine testing prototype**.
 
 **Current v0.2 status:** GitHub Pages dashboard, SQLite/FastAPI, Stockless reference registration, trusted local Fastchess worker job queue, leased paired matches, worker-reported PGN result accounting, 5GB data policy, optional GitHub Releases archives, and static snapshot publishing via GitHub CLI.
 
-**Not yet implemented:** an independently audited public volunteer network, sandboxed distribution of engines, cryptographically verified chess moves/results, robust statistical confidence intervals or SPRT, automatic worker installer, and a publicly hosted backend. Worker results are labeled unverified.
+**Not yet implemented:** an independently audited public volunteer network, sandboxed execution of arbitrary new engines, cryptographically attested engine execution, official Fishtest GSPRT, automatic one-click worker installation, or a publicly hosted private backend. Actual worker results remain labeled unverified.
+
+## v0.3 community release — what is usable today?
+
+| Feature | Implemented | Operational caveat |
+| --- | --- | --- |
+| Actual test standings | Yes | **Empty until real approved-worker PGNs are submitted**; do not invent games |
+| Global volunteer enrollment | Admin-issued individual revocable tokens | A globally reachable **HTTPS API + sandboxing/rate limits** is still required before launching a public fleet |
+| Website engine registration requests | Browser form opens a pre-filled GitHub Issue | Maintainer manually approves engine builds and SHA-256 before execution |
+| Website test requests | Browser form opens a pre-filled GitHub Issue | Queueing games requires a maintainer approval and available CPU |
+| Recorded game board + PGN download | Yes, last 12 genuine locally available games | Completed PGNs are published in the static snapshot, not live move-by-move streaming |
+| Elo intervals + SPRT | Yes, **approximate/experimental** | Wilson fractional-draw approximation for small/unpaired results; paired normal approximation and Gaussian SPRT are NOT official Fishtest GSPRT |
+| Worker contribution rankings | Yes, public aliases and completed job/game counts | Still worker-reported, not attested CPU computation |
+| Korean + English | Yes | Switch language on the public page |
+| Local admin controls | Yes | Visit **http://127.0.0.1:8000/admin** on the backend PC |
+
+### Start the local management interface
+
+Set a strong and **private** administrator token and start the FastAPI server as described below. Open:
+
+**http://127.0.0.1:8000/admin**
+
+This gives you browser forms to register known SHA-256 engine builds, pin Stockless as reference, queue an even-numbered match, approve a volunteer worker, revoke its token, and pause/resume/cancel tests. It never downloads a binary or silently starts a match. All actual chess games are run by trusted local workers.
+
+### Public participants: register engines / request tests / apply as a worker
+
+Visit **https://gaong5247-cmd.github.io/OpenFishtest/#contribute**. Fill out one of the three web forms. The website opens a *pre-filled GitHub Issue* that the participant checks and submits while logged into GitHub. Nothing goes directly to the private home API and no administrator secret is placed on GitHub Pages. Approval is **manual** in this release.
+
+After approval, the administrator opens the local admin page and registers an exact engine build or an individual worker identity. When enrolling a volunteer, the one-time **worker token is shown only once**. Send it only to the approved volunteer through a private channel; never paste it into an Issue or website.
+
+Approved volunteers set their local OPENFISHTEST_WORKER_TOKEN environment variable, map the exact approved SHA-256 executables into their private worker-config.json, and launch the trusted worker with **--worker-id <the approved worker ID>**. The admin may instead keep the whole fleet on one trusted PC. A real external volunteer needs a **properly secured HTTPS endpoint**; github.io only displays results, and the local demo still has no public backend. Do not enable the legacy shared OPENFISHTEST_WORKER_TOKEN on a public service.
+
+### Real PGN playback and statistics
+
+Worker PGNs are parsed with **python-chess** to reject illegal moves, count two-game reversed-color pairs, and build board FEN timelines. The browser can replay the last 12 *actual* recorded games, step by step, and download a small PGN; archived historical PGNs belong in GitHub Releases. The browser cannot independently prove who ran the engine or that non-mate results correspond to authentic resignations. The UI labels these as **worker-reported / unverified**.
+
+Published Elo differences are relative to **Stockless = 3000** only; they are not comparable to FIDE, CCRL, CEDR, or an across-hardware/TC rating pool. The 95% interval shown is an **approximation** (Wilson pseudo-Bernoulli score when no full pairs exist; Gaussian paired-score CI when sufficient data exist). The displayed sequential likelihood ratio compares Elo0=0 vs Elo1=5 with a **Gaussian pair model**; this is a **research prototype**, not the validated GSPRT implementation used in official Fishtest. See [official Fishtest statistics documentation](https://official-stockfish.github.io/docs/fishtest-wiki/Fishtest-Mathematics.html).
+
+All PGNs originate from actual submissions. No fake matches, ratings or worker contribution records are seeded.
+
+---
 
 ## GitHub Pages: free public website
 
@@ -115,7 +155,7 @@ $testSpec = @{ engine_id = 2; games_target = 100; batch_games = 20; tc = "10+0.1
 Invoke-RestMethod http://127.0.0.1:8000/api/admin/tests -Method Post -Headers $adminHeaders -ContentType application/json -Body ($testSpec | ConvertTo-Json)
 ~~~
 
-The API assigns 20 games per batch by default. Fastchess plays color-reversed 2-game pairs. The worker sends a PGN after each batch, which is saved by the server in data/pgn/test-ID. The server checks PGN metadata and W/D/L but **does not prove the moves were legal or that the remote machine honestly executed the engines**. Results remain explicitly marked as worker-reported / unverified.
+The API assigns 20 games per batch by default. Fastchess uses explicit `-games 2 -rounds N -repeat` for color-reversed 2-game pairs. The worker sends a PGN after each batch, which is saved by the server in data/pgn/test-ID. The server checks PGN metadata and W/D/L but **does not prove the moves were legal or that the remote machine honestly executed the engines**. Results remain explicitly marked as worker-reported / unverified.
 
 Lease heartbeats renew an active job every 30 seconds; after disconnection the server can give the job to a different authorized worker. Retrying a completed report will not double-count scores. After 3 failures a test is paused with worker_error status.
 
