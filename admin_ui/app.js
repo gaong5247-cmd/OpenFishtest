@@ -58,7 +58,7 @@ function populateSelect(selectId, engines) {
   }
   if (Array.from(select.options).some(o => o.value === selected)) select.value = selected;
 }
-function render(data, workers) {
+function render(data, workers, arena) {
   snapshot = data;
   $("ref-version").textContent = data.reference ?
     data.reference.name + " · " + data.reference.version : "Not pinned yet";
@@ -114,14 +114,127 @@ function render(data, workers) {
     td.colSpan = 4;
     workerRows.append(tr);
   }
+  renderArenaInbox(arena);
 }
 async function refresh() {
-  const [status, workers] = await Promise.all([
+  const [status, workers, arena] = await Promise.all([
     request("/api/public/snapshot"),
-    request("/api/admin/workers")
+    request("/api/admin/workers"),
+    request("/api/admin/arena")
   ]);
-  render(status, workers);
+  render(status, workers, arena);
 }
+async function downloadCandidate(entryId) {
+  if (!token()) return notice("Administrator secret required.", true);
+  const url = "/api/admin/arena/" + Number(entryId) + "/download";
+  const response = await fetch(url, {
+    headers: {"X-Admin-Token": token()},
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(String(detail.detail || ("Download HTTP " + response.status)));
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = "OpenFishtest-candidate-" + entryId + "-QUARANTINED.zip";
+    document.body.append(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+}
+
+function arenaButton(cell, label, handler) {
+  const button = document.createElement("button");
+  button.className = "secondary";
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", async () => {
+    try {
+      await handler();
+      await refresh();
+    } catch (error) {
+      notice(error.message || String(error), true);
+    }
+  });
+  cell.append(button);
+}
+
+function renderArenaInbox(data) {
+  const tbody = $("arena-admin-rows");
+  const candidates = Array.isArray(data?.entries) ? data.entries : [];
+  $("arena-notification-count").textContent = String(data?.notifications || 0);
+  tbody.replaceChildren();
+  for (const item of candidates) {
+    const tr = document.createElement("tr");
+    const name = rowCell(tr, "#" + item.id + " · " + item.engine_name);
+    const version = document.createElement("div");
+    version.className = "muted";
+    version.textContent = item.engine_version;
+    name.append(version);
+    rowCell(tr, item.score == null ? "—" : Number(item.score).toFixed(1) + "/100");
+    rowCell(tr, item.status);
+    const hash = rowCell(tr, String(item.reference_version || "?") + " · " +
+      String(item.reference_sha256 || "").slice(0, 12) + "…");
+    hash.title = String(item.reference_sha256 || "");
+    const actions = rowCell(tr, "");
+    if (item.download_available) {
+      arenaButton(actions, "Download ZIP", async () => {
+        await downloadCandidate(item.id);
+        notice("Quarantined candidate downloaded. Inspect it in an isolated VM.");
+      });
+      arenaButton(actions, "Mark Release URL", async () => {
+        const url = window.prompt(
+          "Paste the GitHub Release URL YOU manually published for this engine. " +
+          "This does not upload anything.", "https://github.com/"
+        );
+        if (!url) return;
+        if (!url.startsWith("https://github.com/")) {
+          throw new Error("Release URL must use https://github.com/");
+        }
+        const result = await request(
+          "/api/admin/arena/" + item.id + "/mark-released", "POST",
+          {release_url:url}
+        );
+        notice("Recorded manual release: " + result.url);
+      });
+      arenaButton(actions, "Discard binary", async () => {
+        if (!window.confirm("Permanently delete candidate #" + item.id +
+          " ZIP? Historical PGN will remain.")) return;
+        await request("/api/admin/arena/" + item.id + "/discard", "POST", {});
+        notice("Candidate ZIP deleted; PGN retained.");
+      });
+    } else if (item.status === "queued" || item.status === "running") {
+      const state = document.createElement("span");
+      state.className = "muted";
+      state.textContent = "Automatic sandbox testing";
+      actions.append(state);
+    } else if (item.status === "rejected" || item.status === "discarded") {
+      const state = document.createElement("span");
+      state.className = "muted";
+      state.textContent = "Binary deleted";
+      actions.append(state);
+    } else {
+      const state = document.createElement("span");
+      state.className = "muted";
+      state.textContent = "No candidate available";
+      actions.append(state);
+    }
+    tbody.append(tr);
+  }
+  if (!candidates.length) {
+    const tr = document.createElement("tr");
+    rowCell(tr, "No uploads received. Arena may be disabled until HTTPS/VM is configured.")
+      .colSpan = 5;
+    tbody.append(tr);
+  }
+}
+
 function bindSubmit(id, action) {
   $(id).addEventListener("submit", async event => {
     event.preventDefault();
