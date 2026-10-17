@@ -327,6 +327,17 @@ def public_snapshot():
     return snapshot()
 
 
+@app.get("/api/admin/engines")
+def list_approved_engine_builds(x_admin_token: str | None = Header(None)):
+    """Show exact approved hashes locally to simplify baseline re-pinning."""
+    require_admin(x_admin_token)
+    with connection() as db:
+        return [dict(row) for row in db.execute(
+            "SELECT id,name,version,sha256,source_url,approved "
+            "FROM engines ORDER BY id"
+        )]
+
+
 @app.post("/api/admin/engines", status_code=201)
 def register_engine(body: EngineInput, x_admin_token: str | None = Header(None)):
     require_admin(x_admin_token)
