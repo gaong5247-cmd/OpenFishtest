@@ -385,6 +385,11 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
         # Engine author/name/options come from a restricted UCI handshake.
         # Never execute or probe uploaded programs in the HTTP server.
         identity = probe_uci_in_sandbox(command, row["id"], image)
+        detected_version = identity["version"]
+        if detected_version == "unversioned":
+            # UCI requires id name, but not a separate id version.
+            # Fall back to the real binary identity, never a guessed version.
+            detected_version = "sha256-" + row["engine_sha256"][:12]
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute(
@@ -392,7 +397,7 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
                 "uci_name=?,uci_author=?,uci_options_json=? "
                 "WHERE id=? AND status='running' AND run_id=?",
                 (
-                    identity["name"], identity["version"], identity["name"],
+                    identity["name"], detected_version, identity["name"],
                     identity.get("author", ""),
                     json.dumps(identity.get("options", [])),
                     row["id"], token
