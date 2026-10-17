@@ -16,7 +16,7 @@ from typing import Literal
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 DATA_DIR = Path(os.getenv("OPENFISHTEST_DATA", "data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -59,6 +59,7 @@ with connection() as db:
             name TEXT NOT NULL,
             version TEXT NOT NULL,
             sha256 TEXT NOT NULL,
+            source_url TEXT,
             approved INTEGER NOT NULL DEFAULT 1,
             UNIQUE(name, version, sha256)
         );
@@ -78,6 +79,9 @@ with connection() as db:
             created_at TEXT NOT NULL
         );
     """)
+    engine_cols = {r["name"] for r in db.execute("PRAGMA table_info(engines)")}
+    if "source_url" not in engine_cols:
+        db.execute("ALTER TABLE engines ADD COLUMN source_url TEXT")
 
 
 def now_iso():
@@ -97,6 +101,7 @@ class EngineInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     version: str = Field(min_length=1, max_length=80)
     sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    source_url: HttpUrl | None = None
 
 
 class ReferenceInput(BaseModel):
@@ -139,7 +144,7 @@ def snapshot():
     with connection() as db:
         reference_id = get_reference_id(db)
         all_engines = [dict(r) for r in db.execute(
-            "SELECT id,name,version,sha256 FROM engines WHERE approved=1 ORDER BY id"
+            "SELECT id,name,version,sha256,source_url FROM engines WHERE approved=1 ORDER BY id"
         )]
         engine_by_id = {e["id"]: e for e in all_engines}
         all_tests = [dict(r) for r in db.execute(
@@ -214,6 +219,7 @@ def snapshot():
         leaderboard.append({
             "id": engine["id"], "name": engine["name"],
             "version": engine["version"],
+            "source_url": engine.get("source_url"),
             "is_reference": is_ref,
             "games": stats["games"], "wins": wins, "draws": draws, "losses": losses,
             "rating": elo, "rating_ci95": ci,
@@ -317,8 +323,9 @@ def register_engine(body: EngineInput, x_admin_token: str | None = Header(None))
     with connection() as db:
         try:
             cur = db.execute(
-                "INSERT INTO engines(name,version,sha256) VALUES(?,?,?)",
-                (body.name.strip(), body.version.strip(), body.sha256.lower())
+                "INSERT INTO engines(name,version,sha256,source_url) VALUES(?,?,?,?)",
+                (body.name.strip(), body.version.strip(), body.sha256.lower(),
+                 str(body.source_url) if body.source_url else None)
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Engine build already registered") from None
