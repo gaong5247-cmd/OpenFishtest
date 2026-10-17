@@ -21,6 +21,7 @@
 <label>Engine name <input name="name" maxlength="80" required placeholder="Stockless / RubiChess / ..."></label>
 <label>Version <input name="version" maxlength="80" required placeholder="v0.7"></label>
 <label>Real executable SHA-256 <input name="sha256" required pattern="[0-9a-fA-F]{64}" maxlength="64" placeholder="64 hex characters"></label>
+<label>Source / release URL (optional) <input name="source_url" type="url" maxlength="400" placeholder="https://github.com/owner/engine"></label>
 <button type="submit">Register build</button>
 </form>
 <p class="muted">Only enter SHA-256 for a build you have manually approved. Registration never downloads or runs files.</p>
