@@ -81,7 +81,7 @@ def parse_pgn_results(pgn: bytes, expected_games: int) -> MatchResult:
                 "Game must contain precisely Challenger vs Stockless"
             )
         if result not in ("1-0", "0-1", "1/2-1/2"):
-            raise MatchValidationError("Invalid PGN Result")
+            raise MatchValidationError("Invalid result in PGN")
         try:
             board = game.board()
             initial_fen = board.fen(en_passant="fen")
