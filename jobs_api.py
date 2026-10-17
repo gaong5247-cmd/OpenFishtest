@@ -1,14 +1,15 @@
-"""Authenticated local-worker job queue for OpenFishtest v0.2.
+"""Authenticated local-worker job queue for OpenFishtest v0.3.
 
-Prototype security model: one server-side shared worker secret, approved engine
-SHA-256 identities, leased jobs and unverified worker-reported PGN evidence.
-Run behind localhost/private network. No arbitrary engine downloads or execution.
+Each approved volunteer can receive an individual revocable worker token.
+The legacy shared worker secret remains optional for local migration only.
+DO NOT expose this prototype without TLS, abuse prevention, and sandboxing.
 """
 import base64
 import binascii
 import hashlib
 import os
 import secrets
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -25,6 +26,15 @@ MAX_PGN_BASE64 = 2_700_000
 
 class WorkerIdentity(BaseModel):
     worker_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,40}$")
+
+
+class WorkerEnrollment(BaseModel):
+    worker_id: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9_-]{3,40}$")
+    display_name: str = Field(min_length=2, max_length=48)
+
+
+class WorkerPublicName(BaseModel):
+    display_name: str = Field(min_length=2, max_length=48)
 
 
 class LeaseRequest(BaseModel):
@@ -65,6 +75,7 @@ def setup_job_schema(connection):
                 losses INTEGER NOT NULL DEFAULT 0,
                 pgn_sha256 TEXT,
                 pgn_path TEXT,
+                penta_json TEXT,
                 last_error TEXT,
                 created_at REAL NOT NULL,
                 completed_at REAL,
@@ -72,16 +83,93 @@ def setup_job_schema(connection):
             );
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status, lease_expires);
             CREATE INDEX IF NOT EXISTS idx_jobs_test ON jobs(test_id);
+            CREATE TABLE IF NOT EXISTS workers (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,
+                last_seen REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_workers_active ON workers(active);
         """)
+        cols = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
+        if "penta_json" not in cols:
+            db.execute("ALTER TABLE jobs ADD COLUMN penta_json TEXT")
 
 
-def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
+
+def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path,
+                     require_admin):
     setup_job_schema(connection)
 
-    def require_worker(token):
-        expected = os.getenv("OPENFISHTEST_WORKER_TOKEN", "")
-        if not expected or not secrets.compare_digest(expected, token or ""):
+    def worker_for_token(token, expected_id=None):
+        if not token or len(token) > 256:
             raise HTTPException(403, "Valid X-Worker-Token required")
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with connection() as auth_db:
+            worker = auth_db.execute(
+                "SELECT id FROM workers WHERE token_hash=? AND active=1",
+                (token_hash,)
+            ).fetchone()
+        if worker:
+            if expected_id is not None and worker["id"] != expected_id:
+                raise HTTPException(403, "Token does not belong to this worker")
+            return worker["id"]
+        legacy = os.getenv("OPENFISHTEST_WORKER_TOKEN", "")
+        if legacy and secrets.compare_digest(legacy, token):
+            # Explicit operator-controlled backwards-compatible local mode.
+            return None
+        raise HTTPException(403, "Unknown or revoked worker token")
+
+    def authorize_job(job, token):
+        worker_id = worker_for_token(token)
+        if worker_id is not None and job["worker_id"] != worker_id:
+            raise HTTPException(403, "Job belongs to another worker")
+
+    @app.post("/api/admin/workers", status_code=201)
+    def enroll_worker(body: WorkerEnrollment, x_admin_token: str | None = Header(None)):
+        require_admin(x_admin_token)
+        secret = secrets.token_urlsafe(36)
+        token_hash = hashlib.sha256(secret.encode("utf-8")).hexdigest()
+        with connection() as db:
+            try:
+                db.execute(
+                    "INSERT INTO workers(id,display_name,token_hash,active,created_at)"
+                    " VALUES(?,?,?,?,?)",
+                    (body.worker_id, body.display_name.strip(), token_hash, 1, time.time())
+                )
+            except sqlite3.IntegrityError as exc:
+                raise HTTPException(409, "Worker ID already exists") from exc
+        # The server never stores or re-displays this plaintext secret.
+        return {"worker_id": body.worker_id, "display_name": body.display_name.strip(),
+                "worker_token": secret, "shown_once": True}
+
+    @app.get("/api/admin/workers")
+    def list_workers(x_admin_token: str | None = Header(None)):
+        require_admin(x_admin_token)
+        with connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT id,display_name,active,created_at,last_seen FROM workers ORDER BY id"
+            )]
+
+    @app.post("/api/admin/workers/{worker_id}/revoke")
+    def revoke_worker(worker_id: str, x_admin_token: str | None = Header(None)):
+        require_admin(x_admin_token)
+        with connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT id FROM workers WHERE id=?", (worker_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Worker not found")
+            db.execute("UPDATE workers SET active=0 WHERE id=?", (worker_id,))
+            # Immediately invalidate that worker's outstanding leases.
+            db.execute(
+                "UPDATE jobs SET status='queued',lease_id=NULL,lease_expires=0,"
+                "worker_id=NULL WHERE worker_id=? AND status='leased'",
+                (worker_id,)
+            )
+        return {"worker_id": worker_id, "active": False}
+
 
     def get_job(db, job_id):
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -100,7 +188,7 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
 
     @app.post("/api/worker/claim", status_code=200)
     def claim(body: WorkerIdentity, x_worker_token: str | None = Header(None)):
-        require_worker(x_worker_token)
+        authenticated_worker = worker_for_token(x_worker_token, body.worker_id)
         if used_bytes() >= 4_250_000_000:
             raise HTTPException(507, "Storage limit: no new work")
         with connection() as db:
@@ -175,6 +263,9 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
                 "worker_id=?,attempts=attempts+1 WHERE id=?",
                 (lease, time.time() + LEASE_SECONDS, body.worker_id, job["id"])
             )
+            if authenticated_worker is not None:
+                db.execute("UPDATE workers SET last_seen=? WHERE id=?",
+                           (time.time(), authenticated_worker))
             db.execute(
                 "UPDATE tests SET status='running' WHERE id=? AND status='queued'",
                 (job["test_id"],)
@@ -195,10 +286,11 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
     @app.post("/api/worker/jobs/{job_id}/heartbeat")
     def heartbeat(job_id: int, body: LeaseRequest,
                   x_worker_token: str | None = Header(None)):
-        require_worker(x_worker_token)
+        worker_for_token(x_worker_token)
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             job = get_job(db, job_id)
+            authorize_job(job, x_worker_token)
             if check_lease(job, body.lease_id) != "leased":
                 raise HTTPException(409, "Completed job cannot be heartbeated")
             db.execute(
@@ -210,10 +302,11 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
     @app.post("/api/worker/jobs/{job_id}/failed")
     def failed(job_id: int, body: FailRequest,
                x_worker_token: str | None = Header(None)):
-        require_worker(x_worker_token)
+        worker_for_token(x_worker_token)
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             job = get_job(db, job_id)
+            authorize_job(job, x_worker_token)
             if check_lease(job, body.lease_id) != "leased":
                 raise HTTPException(409, "Job already finished")
             exhausted = job["attempts"] >= 3
@@ -232,7 +325,7 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
     @app.post("/api/worker/jobs/{job_id}/finish")
     def finish(job_id: int, body: FinishRequest,
                x_worker_token: str | None = Header(None)):
-        require_worker(x_worker_token)
+        worker_for_token(x_worker_token)
         try:
             pgn = base64.b64decode(body.pgn_base64, validate=True)
         except (binascii.Error, ValueError) as exc:
@@ -246,6 +339,7 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             job = get_job(db, job_id)
+            authorize_job(job, x_worker_token)
             if check_lease(job, body.lease_id) == "done":
                 if job["pgn_sha256"] != actual_digest:
                     raise HTTPException(409, "Already completed with different PGN")
@@ -268,9 +362,9 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
                 os.replace(pending, destination)
                 db.execute(
                     "UPDATE jobs SET status='done',wins=?,draws=?,losses=?,"
-                    "pgn_sha256=?,pgn_path=?,completed_at=? WHERE id=?",
+                    "pgn_sha256=?,pgn_path=?,penta_json=?,completed_at=? WHERE id=?",
                     (result.wins, result.draws, result.losses, actual_digest,
-                     relative, time.time(), job_id)
+                     relative, json.dumps(result.penta), time.time(), job_id)
                 )
                 db.execute(
                     "UPDATE tests SET wins=wins+?,draws=draws+?,losses=losses+? "
