@@ -26,7 +26,7 @@
         <a href="#tests" data-i18n="nav_tests">Tests</a>
         <a href="#games" data-i18n="nav_games">Watch games</a>
         <a href="#workers" data-i18n="nav_workers">Workers</a>
-        <a href="#contribute" class="nav-repo" data-i18n="nav_join">Participate</a>
+        <a href="#arena" class="nav-repo" data-i18n="nav_join">Participate</a>
         <button type="button" class="lang-button" id="lang-switch" aria-label="Switch language">한국어</button>
       </nav>
     </header>
@@ -38,7 +38,7 @@
         <p class="hero-description" data-i18n="hero_desc">A public proving ground for UCI chess engines. Open results, fair comparisons, and a fixed Stockless reference.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#leaderboard"><span data-i18n="hero_rankings">Explore rankings</span> <span aria-hidden="true">↗</span></a>
-          <a class="btn btn-outline" href="#contribute"><span data-i18n="hero_join">Join the project</span> <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-outline" href="#arena"><span data-i18n="hero_join">Join the project</span> <span aria-hidden="true">↗</span></a>
         </div>
         <div class="hero-foot"><span class="tiny-square"></span><span data-i18n="hero_foot">Real games only. No invented engine ratings.</span></div>
       </section>
@@ -119,7 +119,7 @@
       <section id="workers" class="section-card">
         <div class="section-heading">
           <div><span class="section-kicker" data-i18n="workers_kicker">04 / COMPUTE COMMUNITY</span><h2 data-i18n="workers_title">Volunteer workers</h2><p data-i18n="workers_description">Donate spare CPU time using an approved local UCI setup. Individual tokens can be revoked.</p></div>
-          <a href="#contribute" class="btn btn-outline" data-i18n="nav_join">Participate</a>
+          <a href="#arena" class="btn btn-outline" data-i18n="nav_join">Participate</a>
         </div>
         <div class="table-scroll">
           <table><thead><tr><th>RANK</th><th data-i18n="workers_name">WORKER</th><th data-i18n="workers_completed">COMPLETED JOBS</th><th data-i18n="workers_games">CONTRIBUTED GAMES</th><th class="align-right" data-i18n="workers_last">LAST ACTIVITY</th></tr></thead>
@@ -128,45 +128,56 @@
         <div class="table-footer" data-i18n="workers_note">Only approved public aliases appear. Computer hostnames and worker tokens are never published.</div>
       </section>
 
-      <section id="contribute" class="community-section">
-        <div class="protocol-heading"><span class="section-kicker" data-i18n="join_kicker">05 / GET INVOLVED</span><h2 data-i18n="join_title">Build the open testing network.</h2><p data-i18n="join_description">Submit a request through GitHub Issues. Submissions are reviewed before engine binaries or compute jobs are approved.</p></div>
-        <div class="community-grid">
-          <article class="form-card">
-            <div class="form-kicker">01 / ENGINE</div>
-            <h3 data-i18n="form_engine_title">Register an engine</h3>
-            <p data-i18n="form_engine_desc">Propose any UCI engine to face the Stockless baseline.</p>
-            <form id="engine-form">
-              <label><span data-i18n="form_name">Engine name</span><input name="name" required maxlength="80" data-i18n-placeholder="form_name_hint" placeholder="e.g. RubiChess"></label>
-              <label><span data-i18n="form_version">Version / build</span><input name="version" required maxlength="80" data-i18n-placeholder="form_version_hint" placeholder="e.g. 2026.1"></label>
-              <label><span data-i18n="form_repo">Public source or release URL</span><input name="url" type="url" required maxlength="400" data-i18n-placeholder="form_repo_hint" placeholder="https://github.com/..."></label>
-              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_engine">Submit engine request</span> ↗</button>
+      <section id="arena" class="community-section">
+        <div class="protocol-heading">
+          <span class="section-kicker" data-i18n="arena_kicker">05 / OPEN CHALLENGER ARENA</span>
+          <h2 data-i18n="arena_title">Upload. Compete. Earn a release review.</h2>
+          <p data-i18n="arena_description">No engine registration requests. Submit a UCI Linux engine ZIP; an isolated arena tests it against pinned Stockless.</p>
+        </div>
+        <div class="arena-rules">
+          <div class="arena-rule"><span data-i18n="arena_rules_games">FIXED MATCH</span><strong>100 <span data-i18n="arena_games_unit">games</span></strong></div>
+          <div class="arena-rule"><span data-i18n="arena_rules_pass">QUALIFY AT</span><strong>55.0 / 100</strong></div>
+          <div class="arena-rule"><span data-i18n="arena_rules_reference">REFERENCE</span><strong>Stockless</strong></div>
+          <div class="arena-rule"><span data-i18n="arena_rules_archive">FAILED UPLOADS</span><strong data-i18n="arena_rules_purge">Deleted</strong></div>
+        </div>
+        <div id="arena-connect-status" class="arena-connect" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span id="arena-policy-message" data-i18n="arena_connecting">Checking the HTTPS arena server…</span>
+        </div>
+        <div class="arena-grid">
+          <article class="form-card arena-upload-card">
+            <div class="form-kicker">AUTO ARENA / ZIP UPLOAD</div>
+            <h3 data-i18n="arena_upload_title">Challenge Stockless</h3>
+            <p data-i18n="arena_upload_description">Submit one root-level Linux x86_64 ELF named <code>engine</code>, optionally with up to five *.nnue files in one ZIP (128 MiB max).</p>
+            <form id="arena-upload-form">
+              <label><span data-i18n="form_name">Engine name</span><input name="name" required minlength="1" maxlength="80" data-i18n-placeholder="form_name_hint" placeholder="Your UCI engine"></label>
+              <label><span data-i18n="form_version">Version / build</span><input name="version" required maxlength="60" data-i18n-placeholder="form_version_hint" placeholder="e.g. 0.1"></label>
+              <label><span data-i18n="arena_source_url">Source URL (optional)</span><input type="url" name="source" maxlength="350" placeholder="https://github.com/..."></label>
+              <label><span data-i18n="arena_zip_file">UCI engine ZIP archive</span><input type="file" id="arena-zip" name="zip" accept=".zip,application/zip" required></label>
+              <label class="arena-consent"><input name="consent" type="checkbox" required><span data-i18n="arena_consent">I understand my uploaded binary will be run in a restricted VM, that public test results remain visible, and that failed candidates are deleted.</span></label>
+              <div id="arena-upload-progress-container" hidden>
+                <progress id="arena-upload-progress" max="100" value="0"></progress>
+                <span id="arena-progress-label">0%</span>
+              </div>
+              <button type="submit" class="btn btn-primary" id="arena-submit" disabled><span data-i18n="arena_submit">Upload and enter 100-game Arena</span> ↗</button>
             </form>
+            <p class="arena-legal" data-i18n="arena_legal">Only upload binaries you have rights to distribute. Do not include secrets. Windows EXEs cannot run in this Linux-only automated arena.</p>
+            <div class="arena-result-message" id="arena-upload-message" role="status" aria-live="polite"></div>
           </article>
-          <article class="form-card">
-            <div class="form-kicker">02 / TEST</div>
-            <h3 data-i18n="form_test_title">Request a test</h3>
-            <p data-i18n="form_test_desc">Request a color-reversed test against the pinned Stockless build.</p>
-            <form id="test-form">
-              <label><span data-i18n="form_test_engine">Challenger engine</span><input name="engine" required maxlength="80" data-i18n-placeholder="form_test_engine_hint" placeholder="Engine name / version"></label>
-              <div class="form-two"><label><span data-i18n="form_games">Target games</span><select name="games"><option>100</option><option>200</option><option>500</option><option>1000</option><option>2000</option></select></label>
-              <label><span data-i18n="form_tc">Time control</span><select name="tc"><option>10+0.1</option><option>60+0.6</option></select></label></div>
-              <label><span data-i18n="form_test_notes">Purpose (optional)</span><textarea name="purpose" rows="2" maxlength="600" data-i18n-placeholder="form_test_notes_hint" placeholder="Why should we compare these builds?"></textarea></label>
-              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_test">Submit test request</span> ↗</button>
-            </form>
-          </article>
-          <article class="form-card">
-            <div class="form-kicker">03 / WORKER</div>
-            <h3 data-i18n="form_worker_title">Contribute your CPU</h3>
-            <p data-i18n="form_worker_desc">Ask for an approved worker identity and get the setup instructions.</p>
-            <form id="worker-form">
-              <label><span data-i18n="form_worker_alias">Public alias</span><input name="alias" required maxlength="40" data-i18n-placeholder="form_worker_alias_hint" placeholder="Name shown on worker leaderboard"></label>
-              <label><span data-i18n="form_worker_os">Operating system</span><select name="os"><option>Windows</option><option>Linux</option><option>macOS</option></select></label>
-              <label><span data-i18n="form_worker_cpu">CPU description (optional)</span><input name="cpu" maxlength="100" data-i18n-placeholder="form_worker_cpu_hint" placeholder="e.g. 8 threads, Ryzen 7"></label>
-              <button type="submit" class="btn btn-primary"><span data-i18n="form_submit_worker">Apply to volunteer</span> ↗</button>
-            </form>
+          <article class="form-card arena-results-card">
+            <div class="form-kicker">ARENA / PUBLIC RESULTS</div>
+            <h3 data-i18n="arena_results_title">Automatic challenger board</h3>
+            <p data-i18n="arena_results_description">Every completed challenge is recorded. 55+ points creates a private download alert for the owner to choose a GitHub Release. Lower scores purge the uploaded ZIP.</p>
+            <div class="arena-table-scroll">
+              <table class="arena-table">
+                <thead><tr><th>ID</th><th data-i18n="arena_engine">ENGINE</th><th data-i18n="arena_score">SCORE</th><th data-i18n="arena_result">RESULT</th><th data-i18n="arena_pgn">PGN</th></tr></thead>
+                <tbody id="arena-rows"><tr><td class="empty-state" colspan="5" data-i18n="arena_no_results">No real arena tests yet.</td></tr></tbody>
+              </table>
+            </div>
+            <p class="arena-notice" data-i18n="arena_notice">Qualification is a 55/100 threshold, not proof of a statistically significant strength increase. The owner makes every Release decision manually.</p>
+            <a class="arena-admin-link" href="https://github.com/gaong5247-cmd/OpenFishtest/blob/main/docs/ARENA_SETUP.md" target="_blank" rel="noopener noreferrer" data-i18n="arena_setup_link">How to self-host the private arena ↗</a>
           </article>
         </div>
-        <p class="form-notice" data-i18n="form_github_notice">Opens a pre-filled GitHub Issue. A GitHub account is required. Nothing is registered or executed until approved.</p>
       </section>
 
       <section id="protocol" class="protocol">

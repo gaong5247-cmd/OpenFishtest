@@ -23,6 +23,10 @@ let searchText = "";
 let gameIndex = 0;
 let moveIndex = 0;
 let boardFlipped = false;
+let arenaApiBase = "";
+let arenaPolicy = null;
+let arenaUploading = false;
+let lastArenaSubmissionId = null;
 const PIECES = {
   K:"♔", Q:"♕", R:"♖", B:"♗", N:"♘", P:"♙",
   k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟"
@@ -354,6 +358,7 @@ function render(data) {
   renderLeaderboard(data);
   renderTests(data);
   renderWorkers(data);
+  renderArena(data);
   renderReplay(previousGameId);
   renderStatus(data);
 }
@@ -372,53 +377,158 @@ function downloadPgn() {
   setTimeout(() => URL.revokeObjectURL(uri), 1000);
 }
 
-function makeIssue(title, body) {
-  // This opens the GitHub Issue composer; it does not silently post an issue.
-  const uri = new URL("https://github.com/gaong5247-cmd/OpenFishtest/issues/new");
-  uri.searchParams.set("title", title.slice(0, 120));
-  uri.searchParams.set("body", body.slice(0, 5000));
-  window.location.assign(uri.href);
+const ARENA_STATUS_TRANSLATION = {
+  queued:"arena_wait",running:"arena_running",uploading:"arena_wait",
+  passed:"arena_pass",rejected:"arena_fail",invalid:"arena_invalid",
+  error:"arena_error",released:"arena_released",discarded:"arena_discarded"
+};
+
+function renderArena(data) {
+  const rows = $("arena-rows");
+  rows.replaceChildren();
+  const entries = Array.isArray(data.arena) ? data.arena : [];
+  if (!entries.length) return emptyRow(rows, 5, translate("arena_no_results"));
+  entries.slice(0, 30).forEach(item => {
+    const tr = document.createElement("tr");
+    tableCell(tr, "#" + item.id, "rank");
+    const engine = tableCell(tr, item.engine_name || "Unnamed", "engine-name");
+    const version = document.createElement("div");
+    version.className = "engine-version";
+    version.textContent = item.engine_version || "";
+    engine.append(version);
+    const score = item.score == null ? "—" :
+      String(Number(item.score).toFixed(1)) + " / 100";
+    tableCell(tr, score, "elo");
+    const status = ARENA_STATUS_TRANSLATION[item.status] || "arena_wait";
+    const decision = tableCell(tr, translate(status),
+      item.status === "passed" ? "arena-qualified" :
+      item.status === "rejected" ? "arena-disqualified" : "small-data");
+    if (item.status === "passed") decision.title = "Owner review required";
+    const pgnCell = tableCell(tr, "");
+    if (item.pgn_available && arenaApiBase) {
+      const link = document.createElement("a");
+      link.textContent = translate("arena_pgn_download");
+      link.href = arenaApiBase + "/api/arena/entries/" + Number(item.id) + "/pgn";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.className = "engine-source";
+      pgnCell.append(link);
+    } else if (item.pgn_available) {
+      const link = document.createElement("a");
+      link.textContent = translate("arena_pgn_replay");
+      link.href = "#games";
+      link.className = "engine-source";
+      pgnCell.append(link);
+    } else {
+      pgnCell.textContent = "—";
+    }
+    rows.append(tr);
+  });
 }
 
-function formText(form, key) {
-  return String(new FormData(form).get(key) || "").trim();
+function updateArenaControls() {
+  const enabled = Boolean(arenaApiBase && arenaPolicy?.accepting);
+  $("arena-submit").disabled = !enabled || arenaUploading;
+  const message = $("arena-policy-message");
+  const container = $("arena-connect-status");
+  if (!arenaApiBase) {
+    message.textContent = translate("arena_disconnected");
+    container.classList.remove("arena-connected");
+  } else if (!arenaPolicy) {
+    message.textContent = translate("arena_policy_offline");
+    container.classList.remove("arena-connected");
+  } else if (arenaPolicy.accepting) {
+    message.textContent = translate("arena_ready");
+    container.classList.add("arena-connected");
+  } else {
+    message.textContent = translate("arena_disabled") + (arenaPolicy.reason || "—");
+    container.classList.remove("arena-connected");
+  }
 }
 
-function wireForms() {
-  $("engine-form").addEventListener("submit", event => {
-    event.preventDefault();
-    const f = event.currentTarget;
-    if (!f.reportValidity()) return;
-    const name = formText(f, "name"), version = formText(f, "version"), url = formText(f, "url");
-    makeIssue("[ENGINE] " + name + " " + version,
-      "## Engine registration request\n\n- Engine: " + name +
-      "\n- Version: " + version + "\n- Public source or release: " + url +
-      "\n\nMaintainer approval required. Do not attach untrusted executables.");
+async function refreshArenaPolicy() {
+  if (!arenaApiBase) {
+    arenaPolicy = null;
+    updateArenaControls();
+    return;
+  }
+  try {
+    arenaPolicy = await readJson(arenaApiBase + "/api/arena/policy");
+  } catch (_) {
+    arenaPolicy = null;
+  }
+  updateArenaControls();
+}
+
+function submitArenaUpload(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.reportValidity()) return;
+  if (!arenaApiBase || !arenaPolicy?.accepting) {
+    setText("arena-upload-message", translate("arena_disconnected"));
+    return;
+  }
+  const file = $("arena-zip").files?.[0];
+  if (!file) return setText("arena-upload-message", translate("arena_select_file"));
+  if (file.size > 128 * 1024 * 1024) {
+    return setText("arena-upload-message", translate("arena_large_file"));
+  }
+  const formData = new FormData(form);
+  const params = new URLSearchParams({
+    engine_name: String(formData.get("name") || "").trim(),
+    engine_version: String(formData.get("version") || "").trim()
   });
-  $("test-form").addEventListener("submit", event => {
-    event.preventDefault();
-    const f = event.currentTarget;
-    if (!f.reportValidity()) return;
-    const engine = formText(f, "engine");
-    makeIssue("[TEST] " + engine + " vs Stockless",
-      "## Requested Stockless reference test\n\n- Challenger: " + engine +
-      "\n- Target games (color-reversed pairs): " + formText(f, "games") +
-      "\n- Time control: " + formText(f, "tc") +
-      "\n- Purpose: " + (formText(f, "purpose") || "Not specified") +
-      "\n\nTest execution requires a maintainer-approved engine and available trusted workers.");
-  });
-  $("worker-form").addEventListener("submit", event => {
-    event.preventDefault();
-    const f = event.currentTarget;
-    if (!f.reportValidity()) return;
-    const alias = formText(f, "alias");
-    makeIssue("[WORKER] " + alias,
-      "## Volunteer worker request\n\n- Public alias: " + alias +
-      "\n- Operating system: " + formText(f, "os") +
-      "\n- Optional CPU info: " + (formText(f, "cpu") || "Not specified") +
-      "\n\nI will run only locally approved UCI binaries and understand the worker can be stopped. " +
-      "Please contact me through GitHub, not through a public token.");
-  });
+  const source = String(formData.get("source") || "").trim();
+  if (source) params.set("source_url", source);
+  const request = new XMLHttpRequest();
+  const url = arenaApiBase + "/api/arena/submit?" + params.toString();
+  arenaUploading = true;
+  updateArenaControls();
+  $("arena-upload-progress-container").hidden = false;
+  $("arena-upload-progress").value = 0;
+  setText("arena-progress-label", "0%");
+  setText("arena-upload-message", translate("arena_uploading"));
+
+  request.open("POST", url, true);
+  request.setRequestHeader("Content-Type", "application/zip");
+  request.timeout = 4 * 60 * 1000;
+  request.upload.onprogress = progress => {
+    if (!progress.lengthComputable) return;
+    const pct = Math.min(100, Math.round(progress.loaded / progress.total * 100));
+    $("arena-upload-progress").value = pct;
+    setText("arena-progress-label", pct + "%");
+  };
+  request.onload = () => {
+    arenaUploading = false;
+    updateArenaControls();
+    try {
+      const response = JSON.parse(request.responseText);
+      if (request.status !== 201) {
+        throw new Error(response.detail || "HTTP " + request.status);
+      }
+      lastArenaSubmissionId = response.id;
+      form.reset();
+      setText("arena-upload-message",
+        translate("arena_upload_success") + response.id + ". " +
+        translate("arena_refresh_hint"));
+      refresh();
+    } catch (error) {
+      setText("arena-upload-message", translate("arena_upload_error") +
+        String(error.message || error));
+    }
+  };
+  request.onerror = request.ontimeout = () => {
+    arenaUploading = false;
+    updateArenaControls();
+    setText("arena-upload-message",
+      translate("arena_upload_error") + translate("arena_policy_offline"));
+  };
+  request.send(file);
+}
+
+function wireArena() {
+  $("arena-upload-form").addEventListener("submit", submitArenaUpload);
+  updateArenaControls();
 }
 
 async function readJson(url) {
@@ -438,12 +548,16 @@ async function refresh() {
     }
     const base = String(config.api_base || "").trim().replace(/\/+$/, "");
     connectedRemotely = /^https:\/\//i.test(base);
+    arenaApiBase = connectedRemotely ? base : "";
     const url = connectedRemotely ?
       base + "/api/public/snapshot" : "./data/status.json";
     const data = await readJson(url);
     render(data);
+    await refreshArenaPolicy();
   } catch (error) {
     connectedRemotely = false;
+    arenaPolicy = null;
+    updateArenaControls();
     if (!current) render({reference:null, engines:[], tests:[], workers:[], recent_games:[]});
     setText("connection-state", translate("snapshot_failed"));
     setText("connection-detail", String(error.message || error));
@@ -460,6 +574,7 @@ function init() {
     try { localStorage.setItem("openfishtest-language", language); } catch (_) {}
     translateStatic();
     if (current) render(current);
+    updateArenaControls();
   });
   $("refresh-button").addEventListener("click", refresh);
   $("engine-search").addEventListener("input", event => {
@@ -491,7 +606,7 @@ function init() {
     renderBoard();
   });
   $("download-pgn").addEventListener("click", downloadPgn);
-  wireForms();
+  wireArena();
   refresh();
   setInterval(refresh, 60_000);
 }

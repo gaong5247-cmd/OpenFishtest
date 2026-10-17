@@ -1,0 +1,43 @@
+# Self-hosted public HTTPS gateway.
+# Replace api.example.com with YOUR OWN public DNS hostname, point its
+# A/AAAA record to this machine, and forward TCP 80/443 to Caddy.
+# Caddy automatically provisions/renews HTTPS when DNS and ports are ready.
+#
+# IMPORTANT: Block every /api/admin/*, /admin*, /api/worker/* path.
+# Anonymous users may only upload ZIPs and read public status.
+#
+# Run Caddy next to the FastAPI service; uvicorn MUST listen on 127.0.0.1:8000.
+#
+api.example.com {
+    encode zstd gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+    }
+
+    @arenaUpload {
+        path /api/arena/submit
+        method POST OPTIONS
+    }
+    handle @arenaUpload {
+        request_body {
+            max_size 129MiB
+        }
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    @arenaRead {
+        path /api/arena/policy /api/arena/entries/* /api/public/snapshot /api/health
+        method GET HEAD OPTIONS
+    }
+    handle @arenaRead {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle {
+        respond "Not Found" 404
+    }
+}

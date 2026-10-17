@@ -19,7 +19,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m compileall -q server.py jobs_api.py worker.py match_protocol.py engine_stats.py public_games.py archive.py publish_snapshot.py tests
+      - run: python -m compileall -q server.py jobs_api.py worker.py match_protocol.py engine_stats.py public_games.py arena_core.py arena_api.py arena_runner.py archive.py publish_snapshot.py tests
       - run: node --check docs/app.js
       - run: node --check docs/i18n.js
       - run: node scripts/check-i18n.cjs
