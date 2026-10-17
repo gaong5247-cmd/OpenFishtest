@@ -11,6 +11,7 @@ Security boundaries:
   binaries, local paths, private identities or administrator credentials.
 """
 import hashlib
+import io
 import hmac
 import json
 import os
@@ -27,9 +28,11 @@ from pydantic import BaseModel, HttpUrl
 
 from arena_core import (
     GAMES, MAX_UPLOAD_BYTES, PASS_SCORE_X2,
-    UnsafeArchive, validate_archive
+    UnsafeArchive
 )
 from match_protocol import sha256_path
+from candidate_formats import inspect_candidate
+from arena_books import InvalidBook, normalize_book, persisted_book, MAX_BOOK_BYTES
 
 MAX_QUEUED = 6
 MAX_PER_IP_PER_DAY = 2
@@ -76,6 +79,15 @@ def setup_arena_schema(connection):
             );
             CREATE INDEX IF NOT EXISTS idx_arena_status ON arena_entries(status,created_at);
             CREATE INDEX IF NOT EXISTS idx_arena_ip ON arena_entries(ip_hash,created_at);
+            CREATE TABLE IF NOT EXISTS arena_books (
+                digest TEXT PRIMARY KEY,
+                original_format TEXT NOT NULL,
+                positions INTEGER NOT NULL,
+                ip_hash TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_arena_books_owner
+                ON arena_books(ip_hash,created_at);
             CREATE TABLE IF NOT EXISTS arena_events (
                 id INTEGER PRIMARY KEY,
                 arena_id INTEGER NOT NULL REFERENCES arena_entries(id),
@@ -84,6 +96,15 @@ def setup_arena_schema(connection):
                 created_at REAL NOT NULL
             );
         """)
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(arena_entries)")}
+        for name, definition in (
+            ("engine_platform", "TEXT"),
+            ("uci_name", "TEXT"),
+            ("uci_author", "TEXT"),
+            ("uci_options_json", "TEXT"),
+        ):
+            if name not in columns:
+                db.execute(f"ALTER TABLE arena_entries ADD COLUMN {name} {definition}")
 
 
 def _secret_key(folder):
@@ -132,7 +153,15 @@ def _book_info(path, mtime_ns, size):
     return digest.hexdigest(), count
 
 
-def arena_book_metadata():
+def arena_book_metadata(book_sha256=None, data_dir=None):
+    """Resolve the pinned default book or a user-uploaded, hashed EPD book."""
+    if book_sha256 and data_dir is not None:
+        custom = data_dir / "arena" / "books" / f"{book_sha256}.epd"
+        if custom.is_file():
+            try:
+                return persisted_book(custom, book_sha256)
+            except InvalidBook:
+                return None
     raw = os.getenv("OPENFISHTEST_ARENA_BOOK", "").strip()
     if not raw:
         return None
@@ -142,7 +171,7 @@ def arena_book_metadata():
     try:
         st = book.stat()
         digest, count = _book_info(str(book), st.st_mtime_ns, st.st_size)
-        return {"path": book, "sha256": digest, "positions": count}
+        return {"path": book, "sha256": digest, "positions": count} if not book_sha256 or digest == book_sha256 else None
     except (ValueError, OSError):
         return None
 
@@ -153,6 +182,10 @@ def public_row(row):
         "id": row["id"],
         "engine_name": row["engine_name"],
         "engine_version": row["engine_version"],
+        "engine_platform": row["engine_platform"],
+        "uci_name": row["uci_name"],
+        "uci_author": row["uci_author"],
+        "uci_options": json.loads(row["uci_options_json"]) if row["uci_options_json"] else [],
         "source_url": row["source_url"],
         "reference_version": row["reference_version"],
         "reference_sha256": row["reference_sha256"],
