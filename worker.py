@@ -9,7 +9,6 @@ import base64
 import hashlib
 import json
 import os
-import platform
 import signal
 import subprocess
 import sys
@@ -262,7 +261,8 @@ def main(argv=None):
     parser.add_argument("--once", action="store_true", help="Claim at most one job")
     parser.add_argument("--poll", type=int, default=15, help="Idle polling interval (seconds)")
     parser.add_argument("--max-seconds", type=int, default=3600, help="Time limit per batch")
-    parser.add_argument("--worker-id", default=platform.node()[:40] or "local-worker")
+    parser.add_argument("--worker-id", default="local-worker",
+                        help="Exact approved worker ID (never use your PC hostname)")
     args = parser.parse_args(argv)
     if not (1 <= args.poll <= 3600 and 10 <= args.max_seconds <= 172800):
         parser.error("Invalid polling interval or max-seconds")
