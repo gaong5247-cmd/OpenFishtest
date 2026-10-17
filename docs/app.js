@@ -79,7 +79,7 @@ function renderTests(data) {
     const badge = document.createElement("span");
     const pending = ["queued", "running"].includes(t.status);
     badge.className = "state " + (pending ? "queued" : "complete");
-    const statusLabels = {queued:"Queued",running:"In progress",worker_error:"Worker error",partial_unverified:"Manually reported · unverified",complete_unverified:"Manually reported · unverified",complete_worker_reported:"Worker reported · unverified"};
+    const statusLabels = {queued:"Queued",running:"In progress",paused:"Paused",cancelled:"Cancelled",worker_error:"Worker error",partial_unverified:"Manually reported · unverified",complete_unverified:"Manually reported · unverified",complete_worker_reported:"Worker reported · unverified"};
     badge.textContent = statusLabels[t.status] || "Unverified";
     status.append(badge);
     tbody.append(tr);
