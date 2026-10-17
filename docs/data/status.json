@@ -1,11 +1,16 @@
 {
   "project": "OpenFishtest",
   "updated_at": null,
-  "mode": "static-snapshot",
+  "mode": "static-snapshot-empty",
+  "verification": "no_results_submitted",
   "reference": null,
   "reference_rating": 3000,
   "engines": [],
   "tests": [],
+  "workers": [],
+  "active_workers": 0,
+  "recent_games": [],
+  "statistics_notice": "No real Stockless match has been submitted. Elo confidence intervals and SPRT will appear after actual games.",
   "storage": {
     "used_bytes": 0,
     "max_bytes": 5000000000,
