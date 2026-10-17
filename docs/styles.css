@@ -65,3 +65,38 @@
 @media(max-width:780px){.replay-layout{grid-template-columns:1fr}.board-column{max-width:560px;margin:auto}.move-list{min-height:200px;max-height:240px}.community-grid{grid-template-columns:1fr}.community-grid .form-card:last-child{grid-column:auto}.form-card p{min-height:unset}.nav-links a[href="#workers"],.nav-links a[href="#tests"]{display:none}}
 @media(max-width:640px){.stats-five{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-five .stat-card{min-height:119px;padding:14px}.stats-five .stat-numeric{font-size:29px}.chess-square{font-size:clamp(27px,9vw,48px)}.section-card{scroll-margin-top:18px}.board-coordinate{font-size:9px}.nav-links a[href="#games"]{display:none}.lang-button{padding:8px 9px}.move-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:1px 5px}.community-section{padding-top:55px}.game-select-wrap{width:100%}}
 @media(max-width:360px){.board-controls button{min-width:31px;height:34px}.board-controls{gap:3px}.board-controls span{min-width:63px}}
+
+
+/* OpenFishtest v0.4 automatic challenger arena */
+.arena-rules{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:27px 0 16px}
+.arena-rule{padding:17px;background:#152438;border:1px solid #31485f;border-radius:11px;display:flex;flex-direction:column;gap:6px}
+.arena-rule span{font-size:10px;color:#a0b5ca;letter-spacing:.7px;font-weight:750}
+.arena-rule strong{font-size:21px;color:#f2f8ff}
+.arena-connect{border:1px solid #816645;background:#2a251a;border-radius:10px;padding:14px 18px;display:flex;gap:12px;align-items:center;color:#f4d5a2;font-size:12px;margin-bottom:20px}
+.arena-connect.arena-connected{border-color:#387d70;background:#142e2c;color:#7ae8cf}
+.arena-connect .status-dot{width:9px;height:9px;background:#e7ae63;box-shadow:0 0 0 4px #e7ae631a;flex-shrink:0}
+.arena-connect.arena-connected .status-dot{background:#5ce3c4;box-shadow:0 0 0 4px #5ce3c41a}
+.arena-grid{display:grid;grid-template-columns:minmax(300px,1fr) minmax(380px,1.25fr);gap:16px}
+.arena-grid .form-card{min-width:0}
+.arena-upload-card p,.arena-results-card p{min-height:0}
+.arena-upload-card input[type=file]{padding:11px;cursor:pointer}
+.arena-upload-card input[type=file]::file-selector-button{background:#213b4b;color:#d5faed;border:1px solid #46796d;border-radius:6px;margin-right:12px;padding:8px 10px;cursor:pointer}
+.arena-consent{display:flex!important;flex-direction:row!important;align-items:flex-start;gap:9px!important;font-weight:500!important;font-size:11px!important;line-height:1.6}
+.arena-consent input[type=checkbox]{flex:0 0 17px;width:17px;height:17px;accent-color:#5ce3c4;margin-top:1px}
+.arena-upload-card button:disabled{opacity:.43;cursor:not-allowed;filter:grayscale(.4)}
+.arena-legal{font-size:10px!important;line-height:1.6!important;margin:13px 0 0!important;color:#b4a38e!important}
+.arena-upload-progress-container{display:flex;flex-direction:column;gap:5px}
+#arena-upload-progress{width:100%;height:11px;accent-color:#5ce3c4}
+#arena-progress-label{font-size:11px;color:var(--muted)}
+.arena-result-message{font-size:12px;color:#78e4c7;padding:9px 0;min-height:25px;overflow-wrap:anywhere}
+.arena-table-scroll{overflow:auto;max-height:455px;border:1px solid var(--line);border-radius:9px}
+.arena-table{min-width:475px}
+.arena-table th{white-space:nowrap}
+.arena-table td{vertical-align:middle;line-height:1.5;white-space:normal}
+.arena-qualified{color:#63e7b9;font-weight:750}
+.arena-disqualified{color:#efa98b;font-weight:730}
+.arena-notice{margin-top:17px!important;font-size:11px!important;line-height:1.7!important;color:#c5b69d!important}
+.arena-admin-link{margin-top:12px;font-size:12px;font-weight:780;color:#82dfd0}
+.arena-admin-link:hover{text-decoration:underline}
+@media(max-width:1050px){.arena-grid{grid-template-columns:1fr}.arena-rules{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.arena-rule strong{font-size:18px}.arena-rules{gap:8px}.arena-rule{padding:12px}.arena-grid{gap:12px}.arena-grid .form-card{padding:18px}.arena-table{min-width:460px}}
