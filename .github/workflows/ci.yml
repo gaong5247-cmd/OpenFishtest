@@ -19,5 +19,6 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m compileall -q server.py archive.py tests
+      - run: python -m compileall -q server.py jobs_api.py worker.py match_protocol.py archive.py publish_snapshot.py tests
+      - run: node --check docs/app.js
       - run: python -m pytest -q
