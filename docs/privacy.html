@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenFishtest privacy and retention</title>
+<style>body{font:16px/1.7 system-ui,-apple-system,sans-serif;background:#101b2b;color:#e8f2ff;max-width:800px;margin:50px auto;padding:0 20px}a{color:#78e4c7}h1,h2{line-height:1.2}</style></head>
+<body><p><a href="./">← OpenFishtest</a></p><h1>OpenFishtest — Privacy &amp; retention</h1>
+<p>This independent chess-engine project is not affiliated with OpenAI, Anthropic, Google or official Stockfish Fishtest.</p>
+<h2>Public records</h2><p>Engine names, versions, source URLs, reported chess results,
+opening-book digests, public worker aliases and selected PGNs may appear on GitHub
+Pages, API responses, public Issues or Releases. Older records can persist in
+Git history or external caches.</p>
+<h2>Uploaded executable files</h2><p>When operators activate the arena, uploaded
+engine ZIPs are stored temporarily for an isolated 100-game match. ZIPs scoring
+under 55/100 or failing validation are deleted locally; their PGNs and public
+match statistics may remain. A qualifying candidate is kept privately for
+administrator review. Only the administrator decides which file to publish
+as a GitHub Release. Submitted software is not guaranteed safe.</p>
+<h2>Abuse prevention</h2><p>The API uses connection IP addresses for upload
+rate limits but stores a locally salted hash rather than a plaintext IP in
+the arena database. Internet gateways and GitHub may maintain separate access
+logs under their own policies. Worker access tokens are stored as digests,
+not plaintext, after one-time issue.</p>
+<h2>Storage and contact</h2><p>Local PGNs may be archived after 7 days or
+under storage pressure. GitHub Releases can keep selected historical PGNs;
+the 5GB target is not a physical filesystem quota. Never upload personal
+secrets. For questions, file a non-sensitive issue in the
+<a href="https://github.com/gaong5247-cmd/OpenFishtest/issues">project repository</a>.</p>
+</body></html>
