@@ -3,6 +3,8 @@
 
 .game-archive-link{font-size:12px;text-align:right;padding:12px 1px 21px;border-top:1px solid #2b3b4b}.game-archive-link a{color:#75dec9}.game-archive-link a:hover{text-decoration:underline}
 
+.engine-source{display:inline-block;font-size:10px;font-weight:700;color:#75dec9;margin-top:5px}.engine-source:hover{text-decoration:underline}
+
 /* Community v0.3 */
 [hidden]{display:none!important}
 .lang-button{border:1px solid #4b6079;background:#18283c;border-radius:8px;color:var(--accent);padding:9px 11px;font-size:12px;font-weight:800}
