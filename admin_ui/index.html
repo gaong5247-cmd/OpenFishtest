@@ -52,6 +52,12 @@
 <div id="issued-token" class="secret-box" hidden><strong>One-time worker secret</strong><pre id="issued-text"></pre><button id="copy-token" type="button">Copy secret</button><p class="muted">Show this only to the approved worker. It cannot be retrieved later.</p></div>
 </section>
 </div>
+<section class="panel" id="arena-admin">
+<h2>Automatic Arena — candidate notifications <span id="arena-notification-count" class="notification-counter">0</span></h2>
+<p class="muted">Applicants upload UCI ZIPs themselves. The isolated Linux arena scores 100 games against pinned Stockless. At 55.0 points, a candidate appears here, with a protected download available <strong>only to the local administrator</strong>. You choose what becomes a GitHub Release. Failed binaries are deleted; PGNs remain.</p>
+<div class="scroll"><table><thead><tr><th>ID / engine</th><th>Score</th><th>Status</th><th>Verified reference</th><th>Operator actions</th></tr></thead><tbody id="arena-admin-rows"><tr><td colspan="5">Load server data to see candidates.</td></tr></tbody></table></div>
+<p class="muted">Download ZIPs only for review inside a disposable VM; do not execute them on your Windows PC or volunteer PCs. Marking a release only records a URL — it never uploads software automatically.</p>
+</section>
 <section class="panel"><h2>Manage tests</h2><div class="scroll"><table><thead><tr><th>ID</th><th>Matchup</th><th>Progress</th><th>Status</th><th>Actions</th></tr></thead><tbody id="test-rows"><tr><td colspan="5">Load server data first</td></tr></tbody></table></div></section>
 <section class="panel"><h2>Worker credentials</h2><div class="scroll"><table><thead><tr><th>ID</th><th>Public alias</th><th>State</th><th>Actions</th></tr></thead><tbody id="worker-rows"><tr><td colspan="4">Load server data first</td></tr></tbody></table></div></section>
 <footer><a href="https://github.com/gaong5247-cmd/OpenFishtest">Open source repository ↗</a> · Actions requiring real engine computation still need a trusted local Fastchess worker.</footer>
