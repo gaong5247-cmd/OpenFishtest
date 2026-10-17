@@ -199,13 +199,18 @@ def snapshot():
                                totals.get("losses", 0))
         stats = analyze(wins, draws, losses, pair_by_engine.get(engine["id"]))
         offset = stats["elo_diff"]
+        # Avoid ranking a 1- or 2-game fluke as meaningful engine strength.
+        # Even 20 games are merely exploratory; always display uncertainty.
+        enough_for_display = stats["games"] >= 20
         elo = REFERENCE_RATING if is_ref else (
-            round(REFERENCE_RATING + offset, 1) if offset is not None else None
+            round(REFERENCE_RATING + offset, 1)
+            if enough_for_display and offset is not None else None
         )
         ci = [
             round(REFERENCE_RATING + stats["ci95_low"], 1),
             round(REFERENCE_RATING + stats["ci95_high"], 1)
-        ] if not is_ref and stats["ci95_low"] is not None else None
+        ] if (not is_ref and enough_for_display and
+              stats["ci95_low"] is not None) else None
         leaderboard.append({
             "id": engine["id"], "name": engine["name"],
             "version": engine["version"],
