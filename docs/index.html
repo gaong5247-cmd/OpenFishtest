@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenFishtest: transparent, community-driven UCI chess engine testing with Stockless as the reference.">
+  <meta name="theme-color" content="#0b1020">
+  <title>OpenFishtest — Open engine testing</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="OpenFishtest home">
+        <span class="brand-mark" aria-hidden="true">♞</span>
+        <span>OPEN<span class="brand-accent">FISH</span>TEST</span>
+      </a>
+      <nav aria-label="Main navigation" class="nav-links">
+        <a href="#leaderboard">Leaderboard</a>
+        <a href="#tests">Tests</a>
+        <a href="#protocol">Protocol</a>
+        <a class="nav-repo" href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="pulse"></span> OPEN CHESS ENGINE TESTING / EARLY PREVIEW</div>
+        <h1>Let the engines<br><span>prove themselves.</span></h1>
+        <p class="hero-description">A public proving ground for UCI chess engines. Fair comparisons, reproducible results, and a fixed <strong>Stockless</strong> reference.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#leaderboard">Explore rankings <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-outline" href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">Contribute on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-foot"><span class="tiny-square"></span> Open data, honest testing. No invented Elo.</div>
+      </section>
+
+      <section class="status-panel" aria-label="Data connection status">
+        <div class="connection"><span class="status-dot" id="connection-dot"></span>
+          <div><div id="connection-state" class="connection-title">Loading data…</div><div id="connection-detail" class="connection-subtitle">Connecting to public snapshot</div></div>
+        </div>
+        <button class="refresh" type="button" id="refresh-button" aria-label="Refresh results">↻ <span>Refresh</span></button>
+      </section>
+
+      <section class="stat-grid" aria-label="Overview statistics">
+        <article class="stat-card"><span class="stat-label">REFERENCE ENGINE</span><div class="stat-value">Stockless</div><span class="stat-note" id="reference-version">Not pinned yet</span><span class="stat-card-icon" aria-hidden="true">♞</span></article>
+        <article class="stat-card"><span class="stat-label">BASELINE ELO</span><div class="stat-value stat-numeric">3,000<span class="rating-note">*</span></div><span class="stat-note">Relative anchor only</span><span class="stat-card-icon" aria-hidden="true">◎</span></article>
+        <article class="stat-card"><span class="stat-label">REGISTERED ENGINES</span><div class="stat-value stat-numeric" id="engine-count">—</div><span class="stat-note">Approved builds</span><span class="stat-card-icon" aria-hidden="true">▦</span></article>
+        <article class="stat-card"><span class="stat-label">RECORDED GAMES</span><div class="stat-value stat-numeric" id="game-count">—</div><span class="stat-note">From submitted test results</span><span class="stat-card-icon" aria-hidden="true">◈</span></article>
+      </section>
+
+      <section id="leaderboard" class="section-card">
+        <div class="section-heading">
+          <div><span class="section-kicker">01 / ENGINE RATINGS</span><h2>Leaderboard</h2><p>All ratings are relative to the pinned Stockless reference build.</p></div>
+          <label class="search-wrap"><span aria-hidden="true">⌕</span><input type="search" id="engine-search" placeholder="Search engines" aria-label="Search engines"></label>
+        </div>
+        <div class="table-scroll">
+          <table><thead><tr><th>RANK</th><th>ENGINE / BUILD</th><th>GAMES</th><th>W / D / L</th><th class="align-right">RELATIVE ELO</th></tr></thead><tbody id="leaderboard-rows"><tr><td class="empty-state" colspan="5">Loading engines…</td></tr></tbody></table>
+        </div>
+        <div class="table-footer">* 3000 Elo is an arbitrary reference coordinate, not FIDE, CCRL or CEDR rating. Early manual results are not independently verified.</div>
+      </section>
+
+      <section id="tests" class="section-card">
+        <div class="section-heading">
+          <div><span class="section-kicker">02 / TEST ACTIVITY</span><h2>Test runs</h2><p>Transparent reports against Stockless. Automated games and worker scheduling are under development.</p></div>
+          <div class="filter-group" role="group" aria-label="Filter tests"><button class="filter active" data-filter="all">All</button><button class="filter" data-filter="queued">Queued</button><button class="filter" data-filter="complete">Reported</button></div>
+        </div>
+        <div class="table-scroll">
+          <table><thead><tr><th>TEST</th><th>MATCHUP</th><th>GAMES</th><th>W / D / L</th><th class="align-right">STATUS</th></tr></thead><tbody id="test-rows"><tr><td class="empty-state" colspan="5">Loading tests…</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <section id="protocol" class="protocol">
+        <div class="protocol-heading"><span class="section-kicker">03 / THE PRINCIPLES</span><h2>Built for honest engine testing.</h2><p>Stockless is the fixed reference, not a guaranteed winner.</p></div>
+        <div class="protocol-grid">
+          <article class="feature"><div class="feature-icon">01</div><h3>Fixed anchor</h3><p>Stockless builds are pinned by version and SHA-256. Results are always attributed to the exact reference used.</p></article>
+          <article class="feature"><div class="feature-icon">02</div><h3>Equal conditions</h3><p>Every scheduled match targets paired openings with reversed colors. Execution infrastructure is still being built.</p></article>
+          <article class="feature"><div class="feature-icon">03</div><h3>Public evidence</h3><p>Results, game counts, and test conditions should be published. Reported results remain marked unverified until workers can attest to them.</p></article>
+        </div>
+      </section>
+
+      <section class="cta-panel">
+        <div><span class="section-kicker">COMMUNITY POWERED</span><h2>The next great engine deserves a fair test.</h2><p>OpenFishtest is in early development. Follow the repository for new releases, volunteer worker support, and PGN archives.</p></div>
+        <a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer" class="btn btn-primary">View source <span aria-hidden="true">↗</span></a>
+      </section>
+    </main>
+    <footer><span>© OpenFishtest · Stockless Reference Project</span><span>Independent community project. Not affiliated with official Stockfish Fishtest.</span><a href="https://github.com/gaong5247-cmd/OpenFishtest" target="_blank" rel="noopener noreferrer">Source ↗</a></footer>
+  </div>
+  <script src="./app.js" defer></script>
+</body>
+</html>
