@@ -106,10 +106,23 @@ def register_job_api(app: FastAPI, connection, used_bytes, data_dir: Path):
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             # An expired job is retried using the SAME start_game (no duplicates).
+            # Repeated crashes eventually halt a test instead of looping forever.
+            now = time.time()
+            db.execute(
+                "UPDATE tests SET status='worker_error' WHERE id IN "
+                "(SELECT test_id FROM jobs WHERE status='leased' AND "
+                "lease_expires < ? AND attempts >= 3)",
+                (now,)
+            )
+            db.execute(
+                "UPDATE jobs SET status='failed',lease_id=NULL,lease_expires=0 "
+                "WHERE status='leased' AND lease_expires < ? AND attempts >= 3",
+                (now,)
+            )
             db.execute(
                 "UPDATE jobs SET status='queued',lease_id=NULL,lease_expires=0,"
                 "worker_id=NULL WHERE status='leased' AND lease_expires < ?",
-                (time.time(),)
+                (now,)
             )
             job = db.execute("""
                 SELECT j.* FROM jobs j JOIN tests t ON t.id=j.test_id
