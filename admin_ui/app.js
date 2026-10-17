@@ -144,7 +144,8 @@ function setup() {
   bindSubmit("engine-form", async form => {
     const result = await request("/api/admin/engines", "POST", {
       name:formValue(form, "name"), version:formValue(form,"version"),
-      sha256:formValue(form,"sha256")
+      sha256:formValue(form,"sha256"),
+      source_url:formValue(form,"source_url") || null
     });
     form.reset();
     notice("Approved engine build #" + result.id + " registered.");
