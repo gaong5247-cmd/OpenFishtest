@@ -1,0 +1,21 @@
+# Windows 64-bit UCI candidate runner inside dedicated rootless Linux VM.
+# Wine is compatibility software, NOT a security boundary.
+# Build only on the disposable VM, never on user/volunteer PCs.
+#
+# Place a verified, trusted Linux x86_64 Fastchess binary at
+# deployment/fastchess before building.
+FROM debian:bookworm-slim
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    --no-install-recommends python3-minimal wine wine64 ca-certificates \
+    libstdc++6 && \
+    rm -rf /var/lib/apt/lists/* && \
+    command -v wine
+COPY --chmod=0555 fastchess /usr/local/bin/fastchess
+COPY --chmod=0555 arena-challenger /usr/local/bin/arena-challenger
+COPY --chmod=0555 uci_probe.py /usr/local/bin/uci_probe.py
+USER 65534:65534
+ENV HOME=/tmp WINEPREFIX=/tmp/openfishtest-wine WINEDEBUG=-all
+WORKDIR /tmp
+ENTRYPOINT []
+CMD ["fastchess", "-help"]
