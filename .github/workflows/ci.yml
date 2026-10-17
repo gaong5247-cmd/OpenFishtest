@@ -23,4 +23,5 @@ jobs:
       - run: node --check docs/app.js
       - run: node --check docs/i18n.js
       - run: node scripts/check-i18n.cjs
+      - run: node --check admin_ui/app.js
       - run: python -m pytest -q
