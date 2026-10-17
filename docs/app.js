@@ -488,13 +488,33 @@ function setSelectedUpload(kind, file) {
   const allowed = engine ? ["exe", "zip"] : ["epd", "pgn"];
   const max = engine ? 128 * 1024 * 1024 : 5 * 1024 * 1024;
   if (!allowed.includes(extension)) {
+    if (engine) {
+      selectedEngineFile = null;
+      $("arena-engine-zone").classList.remove("selected");
+      setText("arena-engine-name", translate("arena_drop_click"));
+    } else {
+      selectedBookFile = null;
+      $("arena-book-zone").classList.remove("selected");
+      setText("arena-book-name", translate("arena_book_default"));
+    }
     setText("arena-upload-message", translate(engine ?
       "arena_file_type_error" : "arena_book_type_error"));
+    updateArenaControls();
     return;
   }
   if (file.size > max || file.size === 0) {
+    if (engine) {
+      selectedEngineFile = null;
+      $("arena-engine-zone").classList.remove("selected");
+      setText("arena-engine-name", translate("arena_drop_click"));
+    } else {
+      selectedBookFile = null;
+      $("arena-book-zone").classList.remove("selected");
+      setText("arena-book-name", translate("arena_book_default"));
+    }
     setText("arena-upload-message", translate(engine ?
       "arena_large_file" : "arena_large_book"));
+    updateArenaControls();
     return;
   }
   if (engine) {
