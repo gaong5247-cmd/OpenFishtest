@@ -232,6 +232,28 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             raise HTTPException(404, "Arena entry not found")
         return public_row(row)
 
+    @app.get("/api/arena/entries/{entry_id}/pgn")
+    def public_arena_pgn(entry_id: int):
+        with connection() as db:
+            row = db.execute(
+                "SELECT pgn_path,status FROM arena_entries WHERE id=?",
+                (entry_id,)
+            ).fetchone()
+        if not row or row["status"] not in (
+            "passed", "rejected", "released", "discarded"
+        ) or not row["pgn_path"]:
+            raise HTTPException(404, "Completed PGN not available")
+        filename = (data_dir / row["pgn_path"]).resolve()
+        trusted_root = (data_dir / "pgn" / "arena").resolve()
+        if not filename.is_relative_to(trusted_root) or not filename.is_file():
+            raise HTTPException(404, "PGN archived or unavailable")
+        return FileResponse(
+            filename,
+            media_type="application/x-chess-pgn",
+            filename=f"arena-{entry_id}-100-games.pgn",
+            headers={"X-Content-Type-Options": "nosniff"}
+        )
+
     @app.post("/api/arena/submit", status_code=201)
     async def upload_engine(
         request: Request,
