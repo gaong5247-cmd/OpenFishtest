@@ -94,3 +94,80 @@ def recent_games(connection, data_dir: Path, limit: int = MAX_PUBLIC_GAMES):
             # Archived/unavailable PGNs are not invented or silently replaced.
             continue
     return games
+
+
+
+def recent_arena_games(connection, data_dir: Path, limit: int = 6):
+    """Recent authentic, post-sandbox 100-game arena PGNs for board replay.
+
+    Complements trusted-worker games without constructing simulated records.
+    A historical PGN may already have been moved to GitHub Releases.
+    """
+    limit = max(0, min(8, limit))
+    if not limit:
+        return []
+    with connection() as db:
+        rows = [dict(row) for row in db.execute("""
+            SELECT id,engine_name,engine_version,reference_version,
+                   status,pgn_path,completed_at
+            FROM arena_entries WHERE pgn_path IS NOT NULL
+                  AND status IN ('passed','rejected','released','discarded')
+            ORDER BY completed_at DESC, id DESC LIMIT 8
+        """)]
+    games = []
+    root = data_dir.resolve()
+    for row in rows:
+        try:
+            target = (root / row["pgn_path"]).resolve()
+            if (not target.is_relative_to(root / "pgn") or
+                    not target.is_file() or target.stat().st_size > 2_000_000):
+                continue
+            with target.open("r", encoding="utf-8-sig") as source:
+                game_index = 0
+                while len(games) < limit:
+                    game = chess.pgn.read_game(source)
+                    if game is None:
+                        break
+                    game_index += 1
+                    if game.errors:
+                        continue
+                    board = game.board()
+                    positions = [board.fen(en_passant="fen")]
+                    san = []
+                    for move in game.mainline_moves():
+                        if len(san) >= MAX_PUBLIC_PLIES:
+                            break
+                        san.append(board.san(move))
+                        board.push(move)
+                        positions.append(board.fen(en_passant="fen"))
+                    if not san:
+                        continue
+                    pgn = str(game.accept(chess.pgn.StringExporter(
+                        headers=True, variations=False, comments=False
+                    )))
+                    games.append({
+                        "id": f"arena-{row['id']}-{game_index}",
+                        "test_id": f"A{row['id']}",
+                        "job_id": None,
+                        "white": game.headers.get("White", "?"),
+                        "black": game.headers.get("Black", "?"),
+                        "challenger": row["engine_name"],
+                        "challenger_version": row["engine_version"],
+                        "reference": "Stockless",
+                        "reference_version": row["reference_version"],
+                        "result": game.headers.get("Result", "*"),
+                        "round": game.headers.get("Round", "?"),
+                        "date": game.headers.get("Date", "?"),
+                        "played_at": row["completed_at"],
+                        "moves_san": san,
+                        "fens": positions,
+                        "truncated": len(san) >= MAX_PUBLIC_PLIES,
+                        "pgn": pgn if len(pgn) < 24_000 else "",
+                        "verified": False,
+                        "arena": True,
+                    })
+        except (OSError, UnicodeError, ValueError):
+            continue
+        if len(games) >= limit:
+            break
+    return games
