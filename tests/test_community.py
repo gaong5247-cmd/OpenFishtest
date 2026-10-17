@@ -50,7 +50,8 @@ def prepare(api):
         "name":"Stockless", "version":"v0.7", "sha256":"a"*64
     }).json()["id"]
     challenger = admin(api, "/api/admin/engines", {
-        "name":"ChessEngine", "version":"v1.0", "sha256":"b"*64
+        "name":"ChessEngine", "version":"v1.0", "sha256":"b"*64,
+        "source_url":"https://github.com/example/chessengine"
     }).json()["id"]
     assert admin(api, "/api/admin/reference", {"engine_id":reference}).status_code == 200
     test = admin(api, "/api/admin/tests", {
@@ -104,6 +105,8 @@ def test_public_worker_identity_and_replay(local_api):
     assert result["workers"][0]["name"] == "Test Contributor"
     assert result["workers"][0]["games"] == 2
     non_ref = next(e for e in result["engines"] if not e["is_reference"])
+    assert non_ref["source_url"] == "https://github.com/example/chessengine"
+    assert non_ref["rating"] is None  # 2 games are not meaningful Elo evidence
     assert non_ref["statistics"]["pairs"] == 1
     assert result["recent_games"]
     assert result["recent_games"][0]["pgn"]
@@ -126,3 +129,13 @@ def test_legacy_worker_requires_explicit_secret(local_api):
     assert api.post("/api/worker/claim",
         headers={"X-Worker-Token":"shared-guessed-token"},
         json={"worker_id":"pc"}).status_code == 403
+
+
+
+def test_engine_source_url_is_https_only(local_api):
+    api, _ = local_api
+    response = admin(api, "/api/admin/engines", {
+        "name":"Rejected", "version":"bad", "sha256":"c"*64,
+        "source_url":"javascript:alert(1)"
+    })
+    assert response.status_code == 422
