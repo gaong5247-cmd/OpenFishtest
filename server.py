@@ -309,6 +309,13 @@ def local_admin_asset(filename: str, request: Request):
     )
 
 
+@app.get("/api/ai/openapi.json", include_in_schema=False)
+def assistant_actions_schema():
+    """Only public, read-only operations are exposed to AI chat connectors."""
+    from ai_openapi import schema
+    return schema()
+
+
 @app.get("/api/health")
 def health():
     s = snapshot()
