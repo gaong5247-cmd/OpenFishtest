@@ -4,7 +4,7 @@
 # Caddy automatically provisions/renews HTTPS when DNS and ports are ready.
 #
 # IMPORTANT: Block every /api/admin/*, /admin*, /api/worker/* path.
-# Anonymous users may only upload ZIPs and read public status.
+# Anonymous users may upload tightly size-limited EXE/ZIP candidates or EPD/PGN books and read public status.
 #
 # Run Caddy next to the FastAPI service; uvicorn MUST listen on 127.0.0.1:8000.
 #
@@ -19,7 +19,7 @@ api.example.com {
     }
 
     @arenaUpload {
-        path /api/arena/submit
+        path /api/arena/submit /api/arena/books
         method POST OPTIONS
     }
     handle @arenaUpload {
