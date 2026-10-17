@@ -41,8 +41,12 @@ def publish(repo=DEFAULT_REPO):
     # The timestamp is only refreshed if underlying data has actually changed.
     try:
         previous = json.loads(base64.b64decode(existing["content"]).decode("utf-8"))
-        new_data = {k: v for k, v in public.items() if k != "updated_at"}
-        old_data = {k: v for k, v in previous.items() if k != "updated_at"}
+        # Deep-copy before removing comparison-only fields; keep storage bytes
+        # in the actual published JSON.
+        new_data = json.loads(json.dumps(public))
+        old_data = json.loads(json.dumps(previous))
+        new_data.pop("updated_at", None)
+        old_data.pop("updated_at", None)
         # DB/WAL byte usage fluctuates during read and is not a substantive result.
         new_data.get("storage", {}).pop("used_bytes", None)
         old_data.get("storage", {}).pop("used_bytes", None)
