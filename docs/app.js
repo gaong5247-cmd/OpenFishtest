@@ -291,10 +291,9 @@ function renderMoveList(game) {
   target.append(fragment);
 }
 
-function renderReplay() {
+function renderReplay(previousGameId = null) {
   const games = Array.isArray(current?.recent_games) ? current.recent_games : [];
   const selector = $("game-selector");
-  const previousId = selector.value;
   selector.replaceChildren();
   if (!games.length) {
     $("replay-content").hidden = true;
@@ -311,7 +310,7 @@ function renderReplay() {
       game.white + " vs " + game.black + " (" + game.result + ")";
     selector.append(option);
   });
-  const restoredIndex = games.findIndex(game => game.id === previousId);
+  const restoredIndex = games.findIndex(game => game.id === previousGameId);
   if (restoredIndex >= 0) gameIndex = restoredIndex;
   gameIndex = Math.max(0, Math.min(gameIndex, games.length - 1));
   selector.value = String(gameIndex);
@@ -330,6 +329,7 @@ function renderReplay() {
 }
 
 function render(data) {
+  const previousGameId = selectedGame()?.id || null;
   current = data;
   setText("reference-version", data.reference ?
     "Pinned · " + (data.reference.version || "—") : translate("ref_not_pinned"));
@@ -340,7 +340,7 @@ function render(data) {
   renderLeaderboard(data);
   renderTests(data);
   renderWorkers(data);
-  renderReplay();
+  renderReplay(previousGameId);
   renderStatus(data);
 }
 
@@ -430,10 +430,10 @@ async function refresh() {
     render(data);
   } catch (error) {
     connectedRemotely = false;
+    if (!current) render({reference:null, engines:[], tests:[], workers:[], recent_games:[]});
     setText("connection-state", translate("snapshot_failed"));
     setText("connection-detail", String(error.message || error));
     $("connection-dot").classList.remove("online");
-    if (!current) render({reference:null, engines:[], tests:[], workers:[], recent_games:[]});
   } finally {
     $("refresh-button").disabled = false;
   }
