@@ -212,14 +212,15 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
     uploads_dir = data_dir / "arena" / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    def arena_ready():
+    books_dir = data_dir / "arena" / "books"
+    books_dir.mkdir(parents=True, exist_ok=True)
+
+    def arena_ready(selected_book=None):
         if os.getenv(UPLOADS_ENABLED_VAR) != "1":
             return None, None, "Automatic uploads are disabled by the operator"
-        book = arena_book_metadata()
-        if book is None:
-            return None, None, "A valid 50-position EPD book is not configured"
+        book = arena_book_metadata(selected_book, data_dir)
         if used_bytes() + MAX_UPLOAD_BYTES > 4_250_000_000:
-            return None, None, "Server quota requires archiving before accepting uploads"
+            return None, book, "Server quota requires archiving before accepting uploads"
         with connection() as db:
             reference_id = get_reference_id(db)
             ref = db.execute(
@@ -227,32 +228,120 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 "WHERE id=? AND approved=1", (reference_id,)
             ).fetchone() if reference_id else None
             if ref is None or ref["name"].casefold() != "stockless":
-                return None, None, "A Stockless Linux x86_64 reference build must be pinned"
+                return None, book, "Pin a Stockless reference build first (local admin panel)"
             count = db.execute(
                 "SELECT COUNT(*) FROM arena_entries WHERE status "
                 "IN ('uploading','queued','running')"
             ).fetchone()[0]
             if count >= MAX_QUEUED:
-                return None, None, "Arena submission queue is full"
+                return dict(ref), book, "Arena submission queue is full"
+        if book is None:
+            return dict(ref), None, (
+                "Drag in a .epd or .pgn opening book first, or configure a default book"
+            )
         return dict(ref), book, None
 
     @app.get("/api/arena/policy")
     def arena_policy():
         reference, book, issue = arena_ready()
+        # A volunteer can upload their own book if the server/reference is
+        # operational even without an operator-provided default book.
+        book_uploads_ready = (
+            os.getenv(UPLOADS_ENABLED_VAR) == "1" and
+            reference is not None and used_bytes() < 4_000_000_000
+        )
         return {
             "accepting": issue is None,
             "reason": issue,
+            "book_upload_enabled": book_uploads_ready,
             "games": GAMES,
             "pass_points": PASS_SCORE_X2 / 2,
             "max_zip_bytes": MAX_UPLOAD_BYTES,
-            "upload_format": "zip: root engine (Linux x86_64 ELF64), up to five root *.nnue files",
+            "max_book_bytes": MAX_BOOK_BYTES,
+            "supported_engines": [
+                "Windows x86_64 PE32+ .exe",
+                "ZIP containing root-level Linux x86_64 ELF named engine",
+            ],
+            "windows_sandbox_enabled": os.getenv("OPENFISHTEST_WINDOWS_ARENA") == "1",
+            "supported_books": [".epd", ".pgn"],
+            "upload_format": "raw .exe (PE64) or Linux ELF ZIP (128 MiB max)",
             "reference": {
                 "version": reference["version"], "sha256": reference["sha256"]
             } if reference else None,
             "opening_book_sha256": book["sha256"] if book else None,
             "score_rule": "win=1 draw=0.5 loss=0; 55/100 qualifies for private review",
-            "archive_rule": "failed match binaries are immediately discarded; PGNs/results retained",
-            "safety": "Untrusted uploads run only in a separate rootless Linux VM arena; never on volunteer PCs",
+            "archive_rule": "failed candidates discarded; PGNs/results retained",
+            "safety": (
+                "Untrusted EXE/ZIP uploads run only in a separate disposable "
+                "Linux VM with a rootless container and no network; "
+                "never on public volunteer PCs."
+            )
+        }
+
+    @app.post("/api/arena/books", status_code=201)
+    async def upload_opening_book(
+        request: Request,
+        filename: str = Query(min_length=5, max_length=120)
+    ):
+        """Drag and drop EPD/PGN: normalize to EPD and pin by server-computed SHA."""
+        if os.getenv(UPLOADS_ENABLED_VAR) != "1":
+            raise HTTPException(503, "Arena uploads not enabled")
+        if request.headers.get("content-type", "").split(";")[0].lower().strip() not in (
+            "application/octet-stream", "text/plain", "application/x-chess-pgn",
+            "text/x-chess-epd"
+        ):
+            raise HTTPException(415, "Upload raw .epd or .pgn content")
+        if not filename.lower().endswith((".epd", ".pgn")):
+            raise HTTPException(422, "Expected .epd or .pgn opening book")
+        if used_bytes() > 4_000_000_000:
+            raise HTTPException(507, "Arena data directory nearing quota")
+        ip = request.client.host if request.client else "unknown"
+        identity = hmac.new(salt, ip.encode(), hashlib.sha256).hexdigest()
+        with connection() as db:
+            daily_count = db.execute(
+                "SELECT COUNT(*) FROM arena_books WHERE ip_hash=? AND created_at>?",
+                (identity, time.time() - DAILY_SECONDS)
+            ).fetchone()[0]
+            if daily_count >= 3:
+                raise HTTPException(429, "Opening book daily limit reached (3)")
+            all_count = db.execute("SELECT COUNT(*) FROM arena_books").fetchone()[0]
+            if all_count >= 80:
+                raise HTTPException(503, "Arena book capacity is full")
+        data = bytearray()
+        async for part in request.stream():
+            data.extend(part)
+            if len(data) > MAX_BOOK_BYTES:
+                raise HTTPException(413, "Opening book exceeds 5 MiB")
+        try:
+            book = normalize_book(bytes(data), filename)
+        except InvalidBook as exc:
+            raise HTTPException(422, str(exc)) from exc
+        target = books_dir / f"{book.digest}.epd"
+        if not target.exists():
+            staging = books_dir / f".{secrets.token_hex(12)}.incoming"
+            try:
+                with staging.open("xb") as writer:
+                    writer.write(book.content)
+                    writer.flush()
+                    os.fsync(writer.fileno())
+                os.replace(staging, target)
+                target.chmod(0o444)
+            finally:
+                staging.unlink(missing_ok=True)
+        with connection() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO arena_books "
+                "(digest,original_format,positions,ip_hash,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (book.digest, book.original_format, book.positions,
+                 identity, time.time())
+            )
+        return {
+            "book_sha256": book.digest,
+            "positions": book.positions,
+            "input_format": book.original_format,
+            "normalized_format": "epd",
+            "note": "Opening positions normalized, SHA-256 automatically pinned"
         }
 
     @app.get("/api/arena/entries/{entry_id}")
