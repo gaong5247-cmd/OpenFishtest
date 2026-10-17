@@ -1,0 +1,17 @@
+# TRUSTED fastchess runner image. Do not copy attacker-provided binaries here.
+#
+# Before building, compile/pin official Fastchess yourself and put its Linux
+# x86_64 ELF at deployment/fastchess. Then:
+#
+#   docker build -f deployment/Dockerfile.arena -t openfishtest/arena:0.4 deployment
+#
+# Copy a trusted binary, NOT a downloaded anonymous upload.
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0555 fastchess /usr/local/bin/fastchess
+USER 65534:65534
+WORKDIR /tmp
+ENTRYPOINT []
+CMD ["fastchess","-help"]
