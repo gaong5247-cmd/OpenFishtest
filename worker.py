@@ -192,10 +192,19 @@ def run_match(job, config, token, base_url, max_seconds, work_dir):
                 shell=False, **options
             )
             thread.start()
-            try:
-                process.wait(timeout=max_seconds)
-            except subprocess.TimeoutExpired as exc:
-                raise RuntimeError(f"Fastchess exceeded {max_seconds}s timeout") from exc
+            deadline = time.monotonic() + max_seconds
+            while process.poll() is None:
+                if lost_lease.is_set():
+                    raise RuntimeError("Lease lost during match")
+                if log.stat().st_size > 2_000_000:
+                    raise RuntimeError("Fastchess log exceeded 2 MB")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(f"Fastchess exceeded {max_seconds}s timeout")
+                try:
+                    process.wait(timeout=min(5, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
             if lost_lease.is_set():
                 raise RuntimeError("Lease lost during match")
             if process.returncode != 0:
@@ -221,6 +230,7 @@ def run_match(job, config, token, base_url, max_seconds, work_dir):
                   f"{counts.wins}W {counts.draws}D {counts.losses}L")
             # Local copy is not needed after the server safely receives the PGN.
             pgn.unlink(missing_ok=True)
+            log.unlink(missing_ok=True)
             return True
     except Exception as exc:
         print(f"Job #{job['job_id']} failed: {exc}", file=sys.stderr)
