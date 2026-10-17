@@ -143,3 +143,29 @@ def test_failed_jobs_stop_after_3_attempts(api):
     row = next(t for t in client.get("/api/public/snapshot").json()["tests"]
                if t["id"] == test_id)
     assert row["status"] == "worker_error"
+
+
+def test_admin_pause_resume_cancel_revokes_leases(api):
+    client, server = api
+    test_id = prepare_test(client, games=2)
+    first = work(client, "/api/worker/claim", {"worker_id": "pc1"}).json()
+    admin_headers = {"X-Admin-Token": "admin-secret"}
+    paused = client.post(f"/api/admin/tests/{test_id}/pause", headers=admin_headers)
+    assert paused.status_code == 200
+    heartbeat = work(client, f"/api/worker/jobs/{first['job_id']}/heartbeat", {
+        "lease_id": first["lease_id"]
+    })
+    assert heartbeat.status_code == 409
+    assert work(client, "/api/worker/claim", {"worker_id": "pc2"}).status_code == 204
+    resumed = client.post(f"/api/admin/tests/{test_id}/resume", headers=admin_headers)
+    assert resumed.status_code == 200
+    second = work(client, "/api/worker/claim", {"worker_id": "pc2"}).json()
+    assert second["job_id"] == first["job_id"]
+    assert second["lease_id"] != first["lease_id"]
+    cancelled = client.post(f"/api/admin/tests/{test_id}/cancel", headers=admin_headers)
+    assert cancelled.status_code == 200
+    assert submit(client, second).status_code == 409
+    assert work(client, "/api/worker/claim", {"worker_id": "pc3"}).status_code == 204
+    row = next(t for t in client.get("/api/public/snapshot").json()["tests"]
+               if t["id"] == test_id)
+    assert row["status"] == "cancelled"
