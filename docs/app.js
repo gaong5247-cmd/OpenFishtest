@@ -67,7 +67,7 @@ function renderTests(data) {
   tbody.replaceChildren();
   const tests = (Array.isArray(data.tests) ? data.tests : []).filter(t =>
     filter === "all" || (filter === "queued" ?
-      t.status === "queued" : t.status !== "queued"));
+      ["queued", "running"].includes(t.status) : !["queued", "running"].includes(t.status)));
   if (!tests.length) return empty(tbody, "No tests in this view yet.", 5);
   tests.slice(0, 100).forEach(t => {
     const tr = document.createElement("tr");
@@ -77,8 +77,10 @@ function renderTests(data) {
     cell(tr, [t.wins, t.draws, t.losses].map(fmt).join(" / "));
     const status = cell(tr, "", "align-right");
     const badge = document.createElement("span");
-    badge.className = "state " + (t.status === "queued" ? "queued" : "complete");
-    badge.textContent = t.status === "queued" ? "Queued" : "Reported · unverified";
+    const pending = ["queued", "running"].includes(t.status);
+    badge.className = "state " + (pending ? "queued" : "complete");
+    const statusLabels = {queued:"Queued",running:"In progress",worker_error:"Worker error",partial_unverified:"Manually reported · unverified",complete_unverified:"Manually reported · unverified",complete_worker_reported:"Worker reported · unverified"};
+    badge.textContent = statusLabels[t.status] || "Unverified";
     status.append(badge);
     tbody.append(tr);
   });
@@ -110,9 +112,9 @@ async function refresh() {
     const data = await readJson(url);
     render(data);
     setStatus(
-      remote ? "Public API connected" : "Static preview · no live server",
-      formatWhen(data.updated_at) + (remote ? " · Public read-only data" : " · Setup required for live tests"),
-      remote
+      remote ? "Public API connected" : data.updated_at ? "Published snapshot · GitHub Pages" : "Static preview · no test data",
+      formatWhen(data.updated_at) + (remote ? " · Public read-only data" : " · Static results, not real-time"),
+      remote || Boolean(data.updated_at)
     );
   } catch (err) {
     setStatus("Data unavailable", "Could not load public snapshot · " + String(err.message), false);
