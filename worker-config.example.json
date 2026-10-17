@@ -1,0 +1,11 @@
+{
+  "fastchess": "C:\\Tools\\fastchess.exe",
+  "engines": {
+    "REPLACE_WITH_REAL_CHALLENGER_SHA256": "C:\\Engines\\challenger.exe",
+    "REPLACE_WITH_REAL_STOCKLESS_SHA256": "C:\\Engines\\stockless.exe"
+  },
+  "books": {
+    "REPLACE_WITH_REAL_OPENING_BOOK_SHA256": "C:\\Books\\openings.epd"
+  },
+  "concurrency": 1
+}
