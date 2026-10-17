@@ -304,21 +304,19 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
     staging.mkdir(mode=0o755, parents=False)
     challenger = staging / "challenger"
     results = staging / "results"
-    results.mkdir(mode=0o777)
-    results.chmod(0o777)
-    reference = Path(os.environ["OPENFISHTEST_ARENA_REFERENCE_DIR"]).resolve()
-    book = arena_book_metadata()
-    if not book or book["sha256"] != row["book_sha256"]:
-        raise ArenaRunnerError("Arena opening book missing or changed")
-    if sha256_path(reference / "engine") != row["reference_sha256"]:
-        raise ArenaRunnerError("Reference Stockless build does not match pinned SHA-256")
-    checked_reference(reference, row["reference_sha256"])
-    upload = (data_dir / row["archive_path"]).resolve()
-    if not upload.is_relative_to((data_dir / "arena" / "uploads").resolve()):
-        raise ArenaRunnerError("Unsafe arena upload path")
-    if sha256_path(upload) != row["archive_sha256"]:
-        raise ArenaRunnerError("Archive SHA-256 changed since submission")
     try:
+        results.mkdir(mode=0o777)
+        results.chmod(0o777)
+        reference = Path(os.environ["OPENFISHTEST_ARENA_REFERENCE_DIR"]).resolve()
+        book = arena_book_metadata()
+        if not book or book["sha256"] != row["book_sha256"]:
+            raise ArenaRunnerError("Arena opening book missing or changed")
+        checked_reference(reference, row["reference_sha256"])
+        upload = (data_dir / row["archive_path"]).resolve()
+        if not upload.is_relative_to((data_dir / "arena" / "uploads").resolve()):
+            raise ArenaRunnerError("Unsafe arena upload path")
+        if sha256_path(upload) != row["archive_sha256"]:
+            raise ArenaRunnerError("Archive SHA-256 changed since submission")
         details = extract_quarantined(upload, challenger)
         if details.engine_sha256 != row["engine_sha256"]:
             raise ArenaRunnerError("Quarantined engine digest mismatch")
@@ -344,6 +342,43 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def cleanup_orphans(connection, data_dir: Path, timeout: int):
+    """Fail closed on stale uploads/crashed runner jobs and remove old ZIPs."""
+    now = time.time()
+    uploads = (data_dir / "arena" / "uploads").resolve()
+    with connection() as db:
+        db.execute("BEGIN IMMEDIATE")
+        stale = [dict(row) for row in db.execute(
+            "SELECT * FROM arena_entries WHERE "
+            "(status='uploading' AND created_at<?) OR "
+            "(status='running' AND started_at<?)",
+            (now - 3600, now - timeout - 900)
+        )]
+        for row in stale:
+            db.execute(
+                "UPDATE arena_entries SET status='error',archive_path=NULL,"
+                "error_class='stale_or_interrupted',run_id=NULL,completed_at=? "
+                "WHERE id=?", (now, row["id"])
+            )
+            db.execute(
+                "INSERT INTO arena_events(arena_id,kind,summary,created_at)"
+                " VALUES(?,?,?,?)",
+                (row["id"], "error", "Expired upload or crashed arena run purged", now)
+            )
+        # A prior crash between marking a rejection and unlink() must not
+        # leave the unqualified executable on disk.
+        terminal = [row["id"] for row in db.execute(
+            "SELECT id FROM arena_entries WHERE status "
+            "IN ('invalid','error','rejected','discarded')"
+        )]
+    for row in stale:
+        terminal.append(row["id"])
+    for entry_id in set(terminal):
+        for extension in (".zip", ".incoming"):
+            (uploads / f"{entry_id}{extension}").unlink(missing_ok=True)
+    return len(stale)
+
+
 def run_loop(connection, data_dir: Path, once=False, poll=20,
              timeout=TIMEOUT_SECONDS):
     setup_arena_schema(connection)
@@ -357,6 +392,7 @@ def run_loop(connection, data_dir: Path, once=False, poll=20,
     if not arena_book_metadata():
         raise ArenaRunnerError("Set a valid 50-opening EPD book")
 
+    cleanup_orphans(connection, data_dir, timeout)
     print("Isolated arena runner started. Never use this on volunteer PCs.")
     while True:
         claimed = claim_next(connection)
