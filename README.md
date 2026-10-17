@@ -121,6 +121,13 @@ Lease heartbeats renew an active job every 30 seconds; after disconnection the s
 
 **Important security boundary:** the default HTTP endpoint binds to 127.0.0.1. For a different machine, configure a properly authenticated TLS reverse proxy before allowing it to connect; the worker refuses insecure non-loopback HTTP. This is still an MVP, not a public volunteer computing service.
 
+
+Test operations (authenticated admin only):
+
+- POST /api/admin/tests/{id}/pause: revoke active leases, keep remaining work.
+- POST /api/admin/tests/{id}/resume: resume paused or worker_error tests.
+- POST /api/admin/tests/{id}/cancel: permanently stop a queued/running/paused test.
+
 ## 2B. Show actual results on github.io without opening a public port
 
 When the self-hosted server has real results and your PC is authenticated to GitHub via gh auth login, run:
@@ -131,9 +138,24 @@ When the self-hosted server has real results and your PC is authenticated to Git
 
 The publisher reads **only** public fields from the local server database and pushes a static read-only JSON snapshot to docs/data/status.json in the repository. The GitHub Pages workflow republishes the site automatically. The web dashboard clearly says *Published snapshot*, not real time.
 
-You can run publish_snapshot.py from **Windows Task Scheduler** every 30–60 minutes. Set its working directory to the cloned repository, use the same Python environment and OPENFISHTEST_DATA path, and ensure gh authentication is available to that Windows user.
+You can run publish_snapshot.py from **Windows Task Scheduler** every 30–60 minutes. To register both maintenance tasks for the local Windows account, after installing GitHub CLI and running gh auth login:
 
-You can separately schedule archive.py --apply once daily. It requires GitHub CLI access, is not an infinite storage service, and deletes original PGNs only after verified Release upload.
+~~~powershell
+.\scripts\Install-ScheduledMaintenance.ps1 -PublishMinutes 30 -ArchiveTime "03:00"
+~~~
+
+This schedules a 30-minute public Pages snapshot and a verified GitHub Releases PGN archive every day at 03:00. The wrappers default to the clone's data directory; if you configured OPENFISHTEST_DATA elsewhere, update the wrapper environment first so both processes use the same data. Creating scheduled tasks may require permission on your Windows account. **Review these scripts before enabling them.** Scheduled tasks only run while the relevant PC/user has access to the local files and gh credentials. These do not provide off-site backup.
+
+To suspend them:
+
+~~~powershell
+schtasks /Change /TN "OpenFishtest-Publish" /DISABLE
+schtasks /Change /TN "OpenFishtest-Archive" /DISABLE
+~~~
+
+To remove them, use schtasks /Delete with /TN and /F.
+
+The archive job requires GitHub CLI access, is not an unlimited storage service, and deletes original PGNs only after a verified Release upload.
 
 
 ## PGN retention and storage
