@@ -28,6 +28,11 @@ def publish(repo=DEFAULT_REPO):
     # Import server code only on the trusted PC, never in GitHub Pages.
     from server import snapshot
     public = snapshot()
+    # Bound GitHub Pages JSON size; full historic PGNs belong in Releases, not Git history.
+    while len(json.dumps(public, ensure_ascii=False).encode("utf-8")) > 480_000 and public.get("recent_games"):
+        public["recent_games"].pop()
+    if len(json.dumps(public, ensure_ascii=False).encode("utf-8")) > 650_000:
+        raise RuntimeError("Public snapshot too large; archive data or reduce output")
     if any(word in json.dumps(public).lower() for word in (
         "admin_token", "worker_token", "lease_id", "worker_id"
     )):
