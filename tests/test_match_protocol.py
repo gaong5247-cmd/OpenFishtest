@@ -28,8 +28,10 @@ def test_rejects_unpaired_or_changed_opening():
     with pytest.raises(MatchValidationError, match="reverse"):
         parse_pgn_results(same_colors, 2)
 
-    different_fens = make_game("Challenger", "Stockless", "1-0", "FEN1") + make_game(
-        "Stockless", "Challenger", "1-0", "FEN2"
+    different_fens = make_game("Challenger", "Stockless", "1-0",
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") + make_game(
+        "Stockless", "Challenger", "1-0",
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2"
     )
     with pytest.raises(MatchValidationError, match="FEN"):
         parse_pgn_results(different_fens, 2)
