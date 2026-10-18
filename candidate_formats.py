@@ -37,10 +37,26 @@ def inspect_windows_exe(path: Path) -> CandidateMetadata:
             raise UnsafeArchive("Invalid Windows PE offset")
         reader.seek(pe_offset)
         pe = reader.read(26)
-        if pe[:4] != b"PE\x00\x00" or int.from_bytes(pe[4:6], "little") != 0x8664:
-            raise UnsafeArchive("Only 64-bit Windows x86_64 EXE is supported")
+        if len(pe) != 26 or pe[:4] != b"PE\x00\x00":
+            raise UnsafeArchive("Invalid Windows Portable Executable (PE) header")
+        machine = int.from_bytes(pe[4:6], "little")
+        if machine == 0x014C:
+            raise UnsafeArchive(
+                "Windows x86 32-bit EXE detected; only x86_64 PE32+ is supported"
+            )
+        if machine == 0xAA64:
+            raise UnsafeArchive(
+                "Windows ARM64 EXE detected; only x86_64 PE32+ is supported"
+            )
+        if machine != 0x8664:
+            raise UnsafeArchive("Unsupported Windows EXE CPU architecture")
+        characteristics = int.from_bytes(pe[22:24], "little")
+        if characteristics & 0x2000:
+            raise UnsafeArchive("This is a Windows DLL, not a runnable EXE")
+        if characteristics & 0x1000:
+            raise UnsafeArchive("Windows kernel/system executable is not allowed")
         if int.from_bytes(pe[24:26], "little") != 0x020B:
-            raise UnsafeArchive("Expected PE32+ x86_64 executable")
+            raise UnsafeArchive("Expected Windows x86_64 PE32+ executable")
         reader.seek(0)
         digest = hashlib.sha256()
         for block in iter(lambda: reader.read(1024 * 1024), b""):
