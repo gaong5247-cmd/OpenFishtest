@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   publish-legal-pgn-epd:
-    if: \${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -36,7 +36,7 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Validate immutable Git blobs; auto-publish safe data
         env:
-          GITHUB_TOKEN: \${{ github.token }}
-          GITHUB_REPOSITORY: \${{ github.repository }}
-          GITHUB_EVENT_PATH: \${{ github.event_path }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: python community_publish.py
