@@ -1,7 +1,34 @@
 {
   "version": 1,
-  "updated_at": "2026-10-18T06:30:36+00:00",
+  "updated_at": "2026-10-18T06:31:15+00:00",
   "entries": [
+    {
+      "id": "711ff4248656f3132a72",
+      "contributor": "gaong5247-cmd",
+      "submitted_at": "2026-10-18T06:31:13+00:00",
+      "games": 200,
+      "wins": 60,
+      "draws": 59,
+      "losses": 81,
+      "points": 89.5,
+      "penta": [
+        14,
+        24,
+        35,
+        23,
+        4
+      ],
+      "pairs": 100,
+      "book_positions": 500,
+      "book_pair_offset": 0,
+      "pgn_sha256": "3ad89713216b8eb3aa029b0c96651e80a6db90831efb0a2aeab6438c20660cdf",
+      "epd_sha256": "50dab65b6be2124daa33e89b12db8ae2a26568ccca5766c6b587a06f13daae78",
+      "verified": false,
+      "verification": "legal_pgn_and_openings_only_engine_execution_unverified",
+      "pgn_path": "docs/data/community/711ff4248656f3132a72/games.pgn",
+      "epd_path": "docs/data/community/711ff4248656f3132a72/openings.epd",
+      "source_pr": 20
+    },
     {
       "id": "008d1bd7b4004154dc6b",
       "contributor": "gaong5247-cmd",
