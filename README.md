@@ -17,6 +17,48 @@ and automatically publish the resulting **PGN + EPD** through GitHub Actions.
 > played them. Community results are **unverified origin** data, not a
 > certified engine ranking.
 
+## NEW: GitHub login once, upload PGN/EPD with no browser token
+
+The [public upload page](https://gaong5247-cmd.github.io/OpenFishtest/upload.html)
+is static, so it cannot itself read your PC's GitHub login or save files.
+
+For **manual uploads**, run the matching local upload interface:
+
+~~~powershell
+git pull origin main
+.\Start-Upload.cmd
+~~~
+
+It opens **http://127.0.0.1:8765/upload.html**. Choose your existing
+games.pgn and openings.epd, then click PGN/EPD 자동 게시 시작.
+
+Every user signs in once with **gh auth login** using their OWN GitHub
+identity. Neither the admin nor regular Contributors paste access tokens
+into a public web page:
+
+- **Repository owner:** the local API creates a trusted, data-only GitHub
+  branch. GitHub Actions validates it and publishes without a new PR.
+  The legacy 3-accepted-PRs-per-day application restriction is avoided.
+- **Regular Contributor:** the SAME local website automatically creates
+  a strictly PGN+EPD-only fork PR. Actions validates and auto-publishes
+  it under the existing community contribution quota.
+
+The normal **Start-Contributor.cmd** game application calls exactly these
+same role-specific GitHub routines automatically at the end of each
+successful Fastchess match when auto-submit is checked. You do NOT have
+to visit/upload manually after each game. This is a queued upload, and
+the site updates only AFTER the trusted Actions/Pages run succeeds.
+
+You can also submit **old or failed-to-upload PGNs** from Start-Upload.cmd,
+contributor_submit.py, or contributor_backfill.py without playing again.
+Original local PGN/EPD/log files are kept on failure and success.
+
+See [upload setup and localhost API](docs/UPLOAD_GUIDE.md). The local helper
+binds ONLY 127.0.0.1:8765 and must never be forwarded to the Internet.
+The public site is still static; GitHub is the shared publication host.
+
+---
+
 ## Windows: start contributing
 
 Install Python 3.10+, Git for Windows, [GitHub CLI](https://cli.github.com/)
@@ -47,9 +89,9 @@ Choose your **own trusted** Fastchess executable, Stockless reference UCI
 engine, challenger UCI engine and EPD/PGN opening book. Set the CPU concurrent
 game count; click **CPU 기여 시작 · 자동 대국**. The programs run locally.
 
-After a completed match, the app checks PGN/EPD, creates a data-only pull
-request using the Contributor's own GitHub account, and GitHub Actions
-automatically publishes sanitized PGN+EPD to the public scoreboard.
+After a completed match, the app checks PGN/EPD, chooses the owner direct
+upload or the regular Contributor data-only PR using the GitHub CLI account,
+and GitHub Actions automatically publishes sanitized PGN+EPD.
 No administrator approval is required for valid community data.
 Neither untrusted PR code nor EXEs are executed by GitHub Actions.
 
