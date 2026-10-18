@@ -18,13 +18,27 @@ api.example.com {
         X-Frame-Options "DENY"
     }
 
-    @arenaUpload {
-        path /api/arena/submit /api/arena/books
+    # Candidate EXE/ZIP retains the original 128 MiB API cap.
+    @arenaEngineUpload {
+        path /api/arena/submit
         method POST OPTIONS
     }
-    handle @arenaUpload {
+    handle @arenaEngineUpload {
         request_body {
             max_size 129MiB
+        }
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Book uploads have their own 200 MiB allowance. FastAPI streams the
+    # raw bytes to a short-lived file and deletes the original afterwards.
+    @arenaBookUpload {
+        path /api/arena/books
+        method POST OPTIONS
+    }
+    handle @arenaBookUpload {
+        request_body {
+            max_size 201MiB
         }
         reverse_proxy 127.0.0.1:8000
     }
