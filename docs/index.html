@@ -146,22 +146,38 @@
         </div>
         <div class="arena-grid">
           <article class="form-card arena-upload-card">
-            <div class="form-kicker">AUTO ARENA / ZIP UPLOAD</div>
+            <div class="form-kicker">AUTO ARENA / DRAG & DROP</div>
             <h3 data-i18n="arena_upload_title">Challenge Stockless</h3>
-            <p data-i18n="arena_upload_description">Submit one root-level Linux x86_64 ELF named <code>engine</code>, optionally with up to five *.nnue files in one ZIP (128 MiB max).</p>
+            <p data-i18n="arena_upload_description">Drop a Windows UCI .exe or a Linux engine ZIP. OpenFishtest generates the SHA automatically and detects UCI name and options within the isolated arena.</p>
             <form id="arena-upload-form">
-              <label><span data-i18n="form_name">Engine name</span><input name="name" required minlength="1" maxlength="80" data-i18n-placeholder="form_name_hint" placeholder="Your UCI engine"></label>
-              <label><span data-i18n="form_version">Version / build</span><input name="version" required maxlength="60" data-i18n-placeholder="form_version_hint" placeholder="e.g. 0.1"></label>
-              <label><span data-i18n="arena_source_url">Source URL (optional)</span><input type="url" name="source" maxlength="350" placeholder="https://github.com/..."></label>
-              <label><span data-i18n="arena_zip_file">UCI engine ZIP archive</span><input type="file" id="arena-zip" name="zip" accept=".zip,application/zip" required></label>
-              <label class="arena-consent"><input name="consent" type="checkbox" required><span data-i18n="arena_consent">I understand my uploaded binary will be run in a restricted VM, that public test results remain visible, and that failed candidates are deleted.</span></label>
+              <div class="arena-automated-note" data-i18n="arena_uci_auto">
+                No SHA, name or version fields — OpenFishtest detects these through the engine's UCI handshake after isolation.
+              </div>
+              <div class="arena-drop-zone" id="arena-engine-zone" role="button" tabindex="0" aria-label="Drop Windows EXE or Linux engine ZIP" data-drop-kind="engine">
+                <span class="drop-icon" aria-hidden="true">♞</span>
+                <strong data-i18n="arena_drop_engine_title">Drop your UCI engine here</strong>
+                <span data-i18n="arena_drop_engine_desc">Windows x86_64 .exe or Linux engine.zip · up to 128 MiB</span>
+                <span class="drop-file-name" id="arena-engine-name" data-i18n="arena_drop_click">Click to browse files</span>
+              </div>
+              <input type="file" id="arena-engine-file" name="engine_file" accept=".exe,.zip,application/zip,application/octet-stream" hidden>
+              <div class="arena-drop-zone arena-book-zone" id="arena-book-zone" role="button" tabindex="0" aria-label="Drop opening book EPD or PGN" data-drop-kind="book">
+                <span class="drop-icon" aria-hidden="true">♙</span>
+                <strong data-i18n="arena_drop_book_title">Drop an opening book (optional)</strong>
+                <span data-i18n="arena_drop_book_desc">.epd or .pgn · 50+ unique legal positions · 5 MiB maximum</span>
+                <span class="drop-file-name" id="arena-book-name" data-i18n="arena_book_default">Use server's default opening book</span>
+              </div>
+              <input type="file" id="arena-book-file" name="book_file" accept=".epd,.pgn,text/plain,application/x-chess-pgn" hidden>
+              <label class="arena-consent">
+                <input name="consent" type="checkbox" required>
+                <span data-i18n="arena_consent">I understand my uploaded executable will be tested in an isolated VM, that results can be public, and that unsuccessful candidates are deleted.</span>
+              </label>
               <div id="arena-upload-progress-container" hidden>
                 <progress id="arena-upload-progress" max="100" value="0"></progress>
                 <span id="arena-progress-label">0%</span>
               </div>
-              <button type="submit" class="btn btn-primary" id="arena-submit" disabled><span data-i18n="arena_submit">Upload and enter 100-game Arena</span> ↗</button>
+              <button type="submit" class="btn btn-primary" id="arena-submit" disabled><span data-i18n="arena_submit">Upload and start 100-game test</span> ↗</button>
             </form>
-            <p class="arena-legal" data-i18n="arena_legal">Only upload binaries you have rights to distribute. Do not include secrets. Windows EXEs cannot run in this Linux-only automated arena.</p>
+            <p class="arena-legal" data-i18n="arena_legal">Upload only executable files you can legally distribute. Windows EXEs require a separate rootless Wine sandbox VM; uploads remain disabled until the operator enables it.</p>
             <div class="arena-result-message" id="arena-upload-message" role="status" aria-live="polite"></div>
           </article>
           <article class="form-card arena-results-card">

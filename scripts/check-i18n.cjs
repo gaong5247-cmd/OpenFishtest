@@ -23,7 +23,7 @@ const ids = [...client.matchAll(/\$\("([a-z0-9-]+)"\)/g)].map(m => m[1]);
 for (const id of ids) {
   if (!html.includes('id="' + id + '"')) throw new Error("Missing DOM ID " + id);
 }
-for (const id of ["arena-upload-form","arena-submit","arena-zip","arena-rows","chess-board","lang-switch"]) {
+for (const id of ["arena-upload-form","arena-submit","arena-engine-file","arena-book-file","arena-engine-zone","arena-book-zone","arena-rows","chess-board","lang-switch"]) {
   if (!html.includes('id="' + id + '"')) throw new Error("Missing community feature " + id);
 }
 console.log("Verified " + keys.length + " translated bindings and " +

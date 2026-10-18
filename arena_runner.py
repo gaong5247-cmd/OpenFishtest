@@ -30,9 +30,10 @@ import chess.pgn
 
 from arena_api import arena_book_metadata, setup_arena_schema
 from arena_core import (
-    GAMES, MAX_PGN_BYTES, UnsafeArchive,
-    classify_score, extract_quarantined
+    GAMES, MAX_PGN_BYTES, UnsafeArchive, classify_score
 )
+from candidate_formats import stage_candidate
+
 from match_protocol import parse_pgn_results, sha256_path
 
 TIMEOUT_SECONDS = 7200
@@ -104,14 +105,14 @@ def arena_command(entry_id, challenger_dir: Path, reference_dir: Path,
         "--memory", f"{memory_mb}m", "--memory-swap", f"{memory_mb}m",
         "--user", "65534:65534", "--ulimit", "nofile=128:128",
         "--ulimit", "core=0:0",
-        "--tmpfs", "/tmp:rw,nosuid,noexec,size=32m",
+        "--tmpfs", "/tmp:rw,nosuid,size=256m",
         "--mount", f"type=bind,src={challenger_dir.resolve()},dst=/challenger,readonly",
         "--mount", f"type=bind,src={reference_dir.resolve()},dst=/reference,readonly",
         "--mount", f"type=bind,src={book.resolve()},dst=/book/openings.epd,readonly",
         "--mount", f"type=bind,src={results_dir.resolve()},dst=/results",
         "--workdir", "/tmp", image,
         "fastchess",
-        "-engine", "cmd=/challenger/engine", "name=Challenger",
+        "-engine", "cmd=/usr/local/bin/arena-challenger", "name=Challenger",
         "dir=/challenger",
         "-engine", "cmd=/reference/engine", "name=Stockless",
         "dir=/reference",
@@ -124,6 +125,50 @@ def arena_command(entry_id, challenger_dir: Path, reference_dir: Path,
         "-pgnout", "file=/results/match.pgn", "notation=san", "append=false",
         "-event", f"OpenFishtest Arena #{int(entry_id)}"
     ]
+
+
+def probe_uci_in_sandbox(match_command, entry_id, image):
+    """Probe a candidate INSIDE the same rootless sandbox before real games.
+
+    A trusted Python script within the container uses a bounded UCI handshake.
+    This is identification, not a malware scan or engine-strength validation.
+    """
+    try:
+        image_index = match_command.index(image)
+    except ValueError as exc:
+        raise ArenaRunnerError("Trusted Docker image missing from command") from exc
+    command = match_command[:image_index + 1] + [
+        "python3", "/usr/local/bin/uci_probe.py"
+    ]
+    # Unlike the main match, the trusted probe prints at most one 5KB JSON.
+    try:
+        output = subprocess.run(
+            command, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, check=False, timeout=45
+        )
+    except subprocess.TimeoutExpired as exc:
+        _cleanup_container(entry_id)
+        raise ArenaRunnerError("UCI engine handshake timed out in isolated VM") from exc
+    finally:
+        _cleanup_container(entry_id)
+    if output.returncode:
+        raise ArenaRunnerError("Sandboxed UCI probe rejected this engine")
+    try:
+        if len(output.stdout) > 8192:
+            raise ValueError("Excessive UCI metadata")
+        details = json.loads(output.stdout.strip())
+        if (
+            not isinstance(details, dict) or not details.get("uciok")
+            or not isinstance(details.get("name"), str)
+            or not 1 <= len(details["name"]) <= 80
+            or not isinstance(details.get("options"), list)
+            or len(details["options"]) > 24
+        ):
+            raise ValueError("Invalid sanitized UCI metadata")
+        return details
+    except (ValueError, TypeError) as exc:
+        raise ArenaRunnerError("Malformed UCI metadata returned by sandbox") from exc
 
 
 def verify_expected_openings(pgn_bytes: bytes, book: Path):
@@ -308,7 +353,7 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
         results.mkdir(mode=0o777)
         results.chmod(0o777)
         reference = Path(os.environ["OPENFISHTEST_ARENA_REFERENCE_DIR"]).resolve()
-        book = arena_book_metadata()
+        book = arena_book_metadata(row["book_sha256"], data_dir)
         if not book or book["sha256"] != row["book_sha256"]:
             raise ArenaRunnerError("Arena opening book missing or changed")
         checked_reference(reference, row["reference_sha256"])
@@ -317,14 +362,47 @@ def run_one(connection, data_dir: Path, row, token, image=DOCKER_IMAGE,
             raise ArenaRunnerError("Unsafe arena upload path")
         if sha256_path(upload) != row["archive_sha256"]:
             raise ArenaRunnerError("Archive SHA-256 changed since submission")
-        details = extract_quarantined(upload, challenger)
+        details = stage_candidate(upload, challenger)
         if details.engine_sha256 != row["engine_sha256"]:
             raise ArenaRunnerError("Quarantined engine digest mismatch")
+        if row["engine_platform"] and details.platform != row["engine_platform"]:
+            raise ArenaRunnerError("Recorded candidate platform mismatch")
+        if details.platform == "windows_x86_64":
+            if os.getenv("OPENFISHTEST_WINDOWS_ARENA") != "1":
+                raise ArenaRunnerError("Windows sandbox disabled; refusing EXE execution")
+            image = os.getenv(
+                "OPENFISHTEST_ARENA_WINDOWS_IMAGE",
+                "openfishtest/arena-wine:0.5"
+            )
+            if not IMAGE_RE.fullmatch(image):
+                raise ArenaRunnerError("Invalid operator-trusted Windows image")
+
         challenger.chmod(0o755)
         command = arena_command(
             row["id"], challenger, reference, book["path"], results,
             tc=row["tc"], image=image
         )
+        # Engine author/name/options come from a restricted UCI handshake.
+        # Never execute or probe uploaded programs in the HTTP server.
+        identity = probe_uci_in_sandbox(command, row["id"], image)
+        detected_version = identity["version"]
+        if detected_version == "unversioned":
+            # UCI requires id name, but not a separate id version.
+            # Fall back to the real binary identity, never a guessed version.
+            detected_version = "sha256-" + row["engine_sha256"][:12]
+        with connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                "UPDATE arena_entries SET engine_name=?,engine_version=?,"
+                "uci_name=?,uci_author=?,uci_options_json=? "
+                "WHERE id=? AND status='running' AND run_id=?",
+                (
+                    identity["name"], detected_version, identity["name"],
+                    identity.get("author", ""),
+                    json.dumps(identity.get("options", [])),
+                    row["id"], token
+                )
+            )
         result_path = results / "match.pgn"
         _run_sandbox(command, row["id"], staging / "fastchess.log",
                      result_path, timeout=timeout)
@@ -374,7 +452,7 @@ def cleanup_orphans(connection, data_dir: Path, timeout: int):
     for row in stale:
         terminal.append(row["id"])
     for entry_id in set(terminal):
-        for extension in (".zip", ".incoming"):
+        for extension in (".zip", ".exe", ".incoming"):
             (uploads / f"{entry_id}{extension}").unlink(missing_ok=True)
     return len(stale)
 
@@ -389,8 +467,7 @@ def run_loop(connection, data_dir: Path, once=False, poll=20,
         raise ArenaRunnerError("Invalid trusted arena image")
     if not os.getenv("OPENFISHTEST_ARENA_REFERENCE_DIR"):
         raise ArenaRunnerError("Set the trusted Stockless reference directory")
-    if not arena_book_metadata():
-        raise ArenaRunnerError("Set a valid 50-opening EPD book")
+    # Custom uploaded EPD books are independently validated per arena job.
 
     cleanup_orphans(connection, data_dir, timeout)
     print("Isolated arena runner started. Never use this on volunteer PCs.")

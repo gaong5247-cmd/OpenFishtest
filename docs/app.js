@@ -27,6 +27,8 @@ let arenaApiBase = "";
 let arenaPolicy = null;
 let arenaUploading = false;
 let lastArenaSubmissionId = null;
+let selectedEngineFile = null;
+let selectedBookFile = null;
 const PIECES = {
   K:"♔", Q:"♕", R:"♖", B:"♗", N:"♘", P:"♙",
   k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟"
@@ -396,6 +398,15 @@ function renderArena(data) {
     version.className = "engine-version";
     version.textContent = item.engine_version || "";
     engine.append(version);
+    if (item.uci_name) {
+      const info = document.createElement("div");
+      info.className = "engine-version";
+      const optionCount = Array.isArray(item.uci_options) ?
+        item.uci_options.length : 0;
+      info.textContent = "UCI: " + item.uci_name +
+        " · " + optionCount + " options auto-detected";
+      engine.append(info);
+    }
     const score = item.score == null ? "—" :
       String(Number(item.score).toFixed(1)) + " / 100";
     tableCell(tr, score, "elo");
@@ -427,22 +438,32 @@ function renderArena(data) {
 }
 
 function updateArenaControls() {
-  const enabled = Boolean(arenaApiBase && arenaPolicy?.accepting);
-  $("arena-submit").disabled = !enabled || arenaUploading;
+  const isExe = selectedEngineFile?.name?.toLowerCase().endsWith(".exe");
+  const supportsWindows = Boolean(arenaPolicy?.windows_sandbox_enabled);
+  const ready = Boolean(
+    arenaApiBase && arenaPolicy?.reference &&
+    (arenaPolicy.accepting ||
+      (selectedBookFile && arenaPolicy.book_upload_enabled))
+  );
+  const enabled = ready && selectedEngineFile && !arenaUploading &&
+    (!isExe || supportsWindows);
+  $("arena-submit").disabled = !enabled;
   const message = $("arena-policy-message");
   const container = $("arena-connect-status");
+  container.classList.remove("arena-connected");
   if (!arenaApiBase) {
     message.textContent = translate("arena_disconnected");
-    container.classList.remove("arena-connected");
   } else if (!arenaPolicy) {
     message.textContent = translate("arena_policy_offline");
-    container.classList.remove("arena-connected");
-  } else if (arenaPolicy.accepting) {
-    message.textContent = translate("arena_ready");
+  } else if (isExe && !supportsWindows) {
+    message.textContent = translate("arena_windows_unavailable");
+  } else if (ready) {
+    message.textContent = selectedBookFile ?
+      translate("arena_custom_book_ready") : translate("arena_ready");
     container.classList.add("arena-connected");
   } else {
-    message.textContent = translate("arena_disabled") + (arenaPolicy.reason || "—");
-    container.classList.remove("arena-connected");
+    message.textContent = translate("arena_disabled") +
+      (arenaPolicy.reason || "—");
   }
 }
 
@@ -460,73 +481,187 @@ async function refreshArenaPolicy() {
   updateArenaControls();
 }
 
-function submitArenaUpload(event) {
+function setSelectedUpload(kind, file) {
+  if (!file) return;
+  const engine = kind === "engine";
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const allowed = engine ? ["exe", "zip"] : ["epd", "pgn"];
+  const max = engine ? 128 * 1024 * 1024 : 5 * 1024 * 1024;
+  if (!allowed.includes(extension)) {
+    if (engine) {
+      selectedEngineFile = null;
+      $("arena-engine-zone").classList.remove("selected");
+      setText("arena-engine-name", translate("arena_drop_click"));
+    } else {
+      selectedBookFile = null;
+      $("arena-book-zone").classList.remove("selected");
+      setText("arena-book-name", translate("arena_book_default"));
+    }
+    setText("arena-upload-message", translate(engine ?
+      "arena_file_type_error" : "arena_book_type_error"));
+    updateArenaControls();
+    return;
+  }
+  if (file.size > max || file.size === 0) {
+    if (engine) {
+      selectedEngineFile = null;
+      $("arena-engine-zone").classList.remove("selected");
+      setText("arena-engine-name", translate("arena_drop_click"));
+    } else {
+      selectedBookFile = null;
+      $("arena-book-zone").classList.remove("selected");
+      setText("arena-book-name", translate("arena_book_default"));
+    }
+    setText("arena-upload-message", translate(engine ?
+      "arena_large_file" : "arena_large_book"));
+    updateArenaControls();
+    return;
+  }
+  if (engine) {
+    selectedEngineFile = file;
+    setText("arena-engine-name", file.name +
+      " · " + (file.size / 1048576).toFixed(1) + " MiB");
+    $("arena-engine-zone").classList.add("selected");
+  } else {
+    selectedBookFile = file;
+    setText("arena-book-name", file.name +
+      " · " + (file.size / 1048576).toFixed(2) + " MiB");
+    $("arena-book-zone").classList.add("selected");
+  }
+  setText("arena-upload-message", "");
+  updateArenaControls();
+}
+
+function wireDropZone(zoneId, inputId, kind) {
+  const zone = $(zoneId);
+  const input = $(inputId);
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    setSelectedUpload(kind, input.files?.[0]);
+  });
+  ["dragenter", "dragover"].forEach(name => zone.addEventListener(name, event => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  }));
+  ["dragleave", "drop"].forEach(name => zone.addEventListener(name, event => {
+    event.preventDefault();
+    zone.classList.remove("drag-over");
+  }));
+  zone.addEventListener("drop", event => {
+    const files = event.dataTransfer?.files;
+    if (files && files.length === 1) {
+      setSelectedUpload(kind, files[0]);
+    } else {
+      setText("arena-upload-message", translate("arena_one_file"));
+    }
+  });
+}
+
+function transferFile(url, file, mime, startPercent, endPercent) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.setRequestHeader("Content-Type", mime);
+    xhr.timeout = 4 * 60 * 1000;
+    xhr.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      const progress = event.loaded / event.total;
+      const pct = Math.round(startPercent +
+        progress * (endPercent - startPercent));
+      $("arena-upload-progress").value = pct;
+      setText("arena-progress-label", pct + "%");
+    };
+    xhr.onload = () => {
+      let response = {};
+      try { response = JSON.parse(xhr.responseText); } catch (_) {}
+      if (xhr.status === 201) resolve(response);
+      else reject(new Error(String(response.detail || "HTTP " + xhr.status)));
+    };
+    xhr.onerror = () => reject(new Error("Network error / HTTPS backend offline"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out"));
+    xhr.send(file);
+  });
+}
+
+async function submitArenaUpload(event) {
   event.preventDefault();
   const form = event.currentTarget;
   if (!form.reportValidity()) return;
-  if (!arenaApiBase || !arenaPolicy?.accepting) {
+  if (!selectedEngineFile) {
+    setText("arena-upload-message", translate("arena_select_file"));
+    return;
+  }
+  if (!arenaApiBase || !arenaPolicy?.reference) {
     setText("arena-upload-message", translate("arena_disconnected"));
     return;
   }
-  const file = $("arena-zip").files?.[0];
-  if (!file) return setText("arena-upload-message", translate("arena_select_file"));
-  if (file.size > 128 * 1024 * 1024) {
-    return setText("arena-upload-message", translate("arena_large_file"));
+  if (!arenaPolicy.accepting &&
+      !(selectedBookFile && arenaPolicy.book_upload_enabled)) {
+    setText("arena-upload-message", translate("arena_no_book_available"));
+    return;
   }
-  const formData = new FormData(form);
-  const params = new URLSearchParams({
-    engine_name: String(formData.get("name") || "").trim(),
-    engine_version: String(formData.get("version") || "").trim()
-  });
-  const source = String(formData.get("source") || "").trim();
-  if (source) params.set("source_url", source);
-  const request = new XMLHttpRequest();
-  const url = arenaApiBase + "/api/arena/submit?" + params.toString();
+  if (selectedEngineFile.name.toLowerCase().endsWith(".exe") &&
+      !arenaPolicy.windows_sandbox_enabled) {
+    setText("arena-upload-message", translate("arena_windows_unavailable"));
+    return;
+  }
+
   arenaUploading = true;
   updateArenaControls();
   $("arena-upload-progress-container").hidden = false;
   $("arena-upload-progress").value = 0;
   setText("arena-progress-label", "0%");
-  setText("arena-upload-message", translate("arena_uploading"));
-
-  request.open("POST", url, true);
-  request.setRequestHeader("Content-Type", "application/zip");
-  request.timeout = 4 * 60 * 1000;
-  request.upload.onprogress = progress => {
-    if (!progress.lengthComputable) return;
-    const pct = Math.min(100, Math.round(progress.loaded / progress.total * 100));
-    $("arena-upload-progress").value = pct;
-    setText("arena-progress-label", pct + "%");
-  };
-  request.onload = () => {
-    arenaUploading = false;
-    updateArenaControls();
-    try {
-      const response = JSON.parse(request.responseText);
-      if (request.status !== 201) {
-        throw new Error(response.detail || "HTTP " + request.status);
+  try {
+    let bookSha = null;
+    if (selectedBookFile) {
+      setText("arena-upload-message", translate("arena_book_processing"));
+      const params = new URLSearchParams({filename:selectedBookFile.name});
+      const book = await transferFile(
+        arenaApiBase + "/api/arena/books?" + params,
+        selectedBookFile, "application/octet-stream", 0, 25
+      );
+      bookSha = book.book_sha256;
+      if (!/^[a-f0-9]{64}$/i.test(bookSha || "")) {
+        throw new Error("Opening book response did not include valid SHA-256");
       }
-      lastArenaSubmissionId = response.id;
-      form.reset();
-      setText("arena-upload-message",
-        translate("arena_upload_success") + response.id + ". " +
-        translate("arena_refresh_hint"));
-      refresh();
-    } catch (error) {
-      setText("arena-upload-message", translate("arena_upload_error") +
-        String(error.message || error));
     }
-  };
-  request.onerror = request.ontimeout = () => {
+    setText("arena-upload-message", translate("arena_uploading"));
+    const params = new URLSearchParams();
+    if (bookSha) params.set("book_sha256", bookSha);
+    const result = await transferFile(
+      arenaApiBase + "/api/arena/submit?" + params,
+      selectedEngineFile, "application/octet-stream",
+      selectedBookFile ? 25 : 0, 100
+    );
+    lastArenaSubmissionId = result.id;
+    form.reset();
+    selectedEngineFile = null;
+    selectedBookFile = null;
+    $("arena-engine-zone").classList.remove("selected");
+    $("arena-book-zone").classList.remove("selected");
+    setText("arena-engine-name", translate("arena_drop_click"));
+    setText("arena-book-name", translate("arena_book_default"));
+    setText("arena-upload-message", translate("arena_upload_success") +
+      result.id + ". " + translate("arena_uci_pending"));
+    await refresh();
+  } catch (error) {
+    setText("arena-upload-message", translate("arena_upload_error") +
+      String(error.message || error));
+  } finally {
     arenaUploading = false;
     updateArenaControls();
-    setText("arena-upload-message",
-      translate("arena_upload_error") + translate("arena_policy_offline"));
-  };
-  request.send(file);
+  }
 }
 
 function wireArena() {
+  wireDropZone("arena-engine-zone", "arena-engine-file", "engine");
+  wireDropZone("arena-book-zone", "arena-book-file", "book");
   $("arena-upload-form").addEventListener("submit", submitArenaUpload);
   updateArenaControls();
 }

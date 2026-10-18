@@ -8,9 +8,11 @@
 # Copy a trusted binary, NOT a downloaded anonymous upload.
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates libstdc++6 \
+    && apt-get install --no-install-recommends -y ca-certificates libstdc++6 python3-minimal \
     && rm -rf /var/lib/apt/lists/*
 COPY --chmod=0555 fastchess /usr/local/bin/fastchess
+COPY --chmod=0555 arena-challenger /usr/local/bin/arena-challenger
+COPY --chmod=0555 uci_probe.py /usr/local/bin/uci_probe.py
 USER 65534:65534
 WORKDIR /tmp
 ENTRYPOINT []

@@ -11,6 +11,7 @@ Security boundaries:
   binaries, local paths, private identities or administrator credentials.
 """
 import hashlib
+import io
 import hmac
 import json
 import os
@@ -27,9 +28,11 @@ from pydantic import BaseModel, HttpUrl
 
 from arena_core import (
     GAMES, MAX_UPLOAD_BYTES, PASS_SCORE_X2,
-    UnsafeArchive, validate_archive
+    UnsafeArchive
 )
 from match_protocol import sha256_path
+from candidate_formats import inspect_candidate
+from arena_books import InvalidBook, normalize_book, persisted_book, MAX_BOOK_BYTES
 
 MAX_QUEUED = 6
 MAX_PER_IP_PER_DAY = 2
@@ -76,6 +79,15 @@ def setup_arena_schema(connection):
             );
             CREATE INDEX IF NOT EXISTS idx_arena_status ON arena_entries(status,created_at);
             CREATE INDEX IF NOT EXISTS idx_arena_ip ON arena_entries(ip_hash,created_at);
+            CREATE TABLE IF NOT EXISTS arena_books (
+                digest TEXT PRIMARY KEY,
+                original_format TEXT NOT NULL,
+                positions INTEGER NOT NULL,
+                ip_hash TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_arena_books_owner
+                ON arena_books(ip_hash,created_at);
             CREATE TABLE IF NOT EXISTS arena_events (
                 id INTEGER PRIMARY KEY,
                 arena_id INTEGER NOT NULL REFERENCES arena_entries(id),
@@ -84,6 +96,15 @@ def setup_arena_schema(connection):
                 created_at REAL NOT NULL
             );
         """)
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(arena_entries)")}
+        for name, definition in (
+            ("engine_platform", "TEXT"),
+            ("uci_name", "TEXT"),
+            ("uci_author", "TEXT"),
+            ("uci_options_json", "TEXT"),
+        ):
+            if name not in columns:
+                db.execute(f"ALTER TABLE arena_entries ADD COLUMN {name} {definition}")
 
 
 def _secret_key(folder):
@@ -132,7 +153,15 @@ def _book_info(path, mtime_ns, size):
     return digest.hexdigest(), count
 
 
-def arena_book_metadata():
+def arena_book_metadata(book_sha256=None, data_dir=None):
+    """Resolve the pinned default book or a user-uploaded, hashed EPD book."""
+    if book_sha256 and data_dir is not None:
+        custom = data_dir / "arena" / "books" / f"{book_sha256}.epd"
+        if custom.is_file():
+            try:
+                return persisted_book(custom, book_sha256)
+            except InvalidBook:
+                return None
     raw = os.getenv("OPENFISHTEST_ARENA_BOOK", "").strip()
     if not raw:
         return None
@@ -142,7 +171,7 @@ def arena_book_metadata():
     try:
         st = book.stat()
         digest, count = _book_info(str(book), st.st_mtime_ns, st.st_size)
-        return {"path": book, "sha256": digest, "positions": count}
+        return {"path": book, "sha256": digest, "positions": count} if not book_sha256 or digest == book_sha256 else None
     except (ValueError, OSError):
         return None
 
@@ -153,6 +182,10 @@ def public_row(row):
         "id": row["id"],
         "engine_name": row["engine_name"],
         "engine_version": row["engine_version"],
+        "engine_platform": row["engine_platform"],
+        "uci_name": row["uci_name"],
+        "uci_author": row["uci_author"],
+        "uci_options": json.loads(row["uci_options_json"]) if row["uci_options_json"] else [],
         "source_url": row["source_url"],
         "reference_version": row["reference_version"],
         "reference_sha256": row["reference_sha256"],
@@ -179,14 +212,15 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
     uploads_dir = data_dir / "arena" / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    def arena_ready():
+    books_dir = data_dir / "arena" / "books"
+    books_dir.mkdir(parents=True, exist_ok=True)
+
+    def arena_ready(selected_book=None):
         if os.getenv(UPLOADS_ENABLED_VAR) != "1":
             return None, None, "Automatic uploads are disabled by the operator"
-        book = arena_book_metadata()
-        if book is None:
-            return None, None, "A valid 50-position EPD book is not configured"
+        book = arena_book_metadata(selected_book, data_dir)
         if used_bytes() + MAX_UPLOAD_BYTES > 4_250_000_000:
-            return None, None, "Server quota requires archiving before accepting uploads"
+            return None, book, "Server quota requires archiving before accepting uploads"
         with connection() as db:
             reference_id = get_reference_id(db)
             ref = db.execute(
@@ -194,32 +228,120 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 "WHERE id=? AND approved=1", (reference_id,)
             ).fetchone() if reference_id else None
             if ref is None or ref["name"].casefold() != "stockless":
-                return None, None, "A Stockless Linux x86_64 reference build must be pinned"
+                return None, book, "Pin a Stockless reference build first (local admin panel)"
             count = db.execute(
                 "SELECT COUNT(*) FROM arena_entries WHERE status "
                 "IN ('uploading','queued','running')"
             ).fetchone()[0]
             if count >= MAX_QUEUED:
-                return None, None, "Arena submission queue is full"
+                return dict(ref), book, "Arena submission queue is full"
+        if book is None:
+            return dict(ref), None, (
+                "Drag in a .epd or .pgn opening book first, or configure a default book"
+            )
         return dict(ref), book, None
 
     @app.get("/api/arena/policy")
     def arena_policy():
         reference, book, issue = arena_ready()
+        # A volunteer can upload their own book if the server/reference is
+        # operational even without an operator-provided default book.
+        book_uploads_ready = (
+            os.getenv(UPLOADS_ENABLED_VAR) == "1" and
+            reference is not None and used_bytes() < 4_000_000_000
+        )
         return {
             "accepting": issue is None,
             "reason": issue,
+            "book_upload_enabled": book_uploads_ready,
             "games": GAMES,
             "pass_points": PASS_SCORE_X2 / 2,
             "max_zip_bytes": MAX_UPLOAD_BYTES,
-            "upload_format": "zip: root engine (Linux x86_64 ELF64), up to five root *.nnue files",
+            "max_book_bytes": MAX_BOOK_BYTES,
+            "supported_engines": [
+                "Windows x86_64 PE32+ .exe",
+                "ZIP containing root-level Linux x86_64 ELF named engine",
+            ],
+            "windows_sandbox_enabled": os.getenv("OPENFISHTEST_WINDOWS_ARENA") == "1",
+            "supported_books": [".epd", ".pgn"],
+            "upload_format": "raw .exe (PE64) or Linux ELF ZIP (128 MiB max)",
             "reference": {
                 "version": reference["version"], "sha256": reference["sha256"]
             } if reference else None,
             "opening_book_sha256": book["sha256"] if book else None,
             "score_rule": "win=1 draw=0.5 loss=0; 55/100 qualifies for private review",
-            "archive_rule": "failed match binaries are immediately discarded; PGNs/results retained",
-            "safety": "Untrusted uploads run only in a separate rootless Linux VM arena; never on volunteer PCs",
+            "archive_rule": "failed candidates discarded; PGNs/results retained",
+            "safety": (
+                "Untrusted EXE/ZIP uploads run only in a separate disposable "
+                "Linux VM with a rootless container and no network; "
+                "never on public volunteer PCs."
+            )
+        }
+
+    @app.post("/api/arena/books", status_code=201)
+    async def upload_opening_book(
+        request: Request,
+        filename: str = Query(min_length=5, max_length=120)
+    ):
+        """Drag and drop EPD/PGN: normalize to EPD and pin by server-computed SHA."""
+        if os.getenv(UPLOADS_ENABLED_VAR) != "1":
+            raise HTTPException(503, "Arena uploads not enabled")
+        if request.headers.get("content-type", "").split(";")[0].lower().strip() not in (
+            "application/octet-stream", "text/plain", "application/x-chess-pgn",
+            "text/x-chess-epd"
+        ):
+            raise HTTPException(415, "Upload raw .epd or .pgn content")
+        if not filename.lower().endswith((".epd", ".pgn")):
+            raise HTTPException(422, "Expected .epd or .pgn opening book")
+        if used_bytes() > 4_000_000_000:
+            raise HTTPException(507, "Arena data directory nearing quota")
+        ip = request.client.host if request.client else "unknown"
+        identity = hmac.new(salt, ip.encode(), hashlib.sha256).hexdigest()
+        with connection() as db:
+            daily_count = db.execute(
+                "SELECT COUNT(*) FROM arena_books WHERE ip_hash=? AND created_at>?",
+                (identity, time.time() - DAILY_SECONDS)
+            ).fetchone()[0]
+            if daily_count >= 3:
+                raise HTTPException(429, "Opening book daily limit reached (3)")
+            all_count = db.execute("SELECT COUNT(*) FROM arena_books").fetchone()[0]
+            if all_count >= 80:
+                raise HTTPException(503, "Arena book capacity is full")
+        data = bytearray()
+        async for part in request.stream():
+            data.extend(part)
+            if len(data) > MAX_BOOK_BYTES:
+                raise HTTPException(413, "Opening book exceeds 5 MiB")
+        try:
+            book = normalize_book(bytes(data), filename)
+        except InvalidBook as exc:
+            raise HTTPException(422, str(exc)) from exc
+        target = books_dir / f"{book.digest}.epd"
+        if not target.exists():
+            staging = books_dir / f".{secrets.token_hex(12)}.incoming"
+            try:
+                with staging.open("xb") as writer:
+                    writer.write(book.content)
+                    writer.flush()
+                    os.fsync(writer.fileno())
+                os.replace(staging, target)
+                target.chmod(0o444)
+            finally:
+                staging.unlink(missing_ok=True)
+        with connection() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO arena_books "
+                "(digest,original_format,positions,ip_hash,created_at) "
+                "VALUES(?,?,?,?,?)",
+                (book.digest, book.original_format, book.positions,
+                 identity, time.time())
+            )
+        return {
+            "book_sha256": book.digest,
+            "positions": book.positions,
+            "input_format": book.original_format,
+            "normalized_format": "epd",
+            "note": "Opening positions normalized, SHA-256 automatically pinned"
         }
 
     @app.get("/api/arena/entries/{entry_id}")
@@ -257,15 +379,27 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
     @app.post("/api/arena/submit", status_code=201)
     async def upload_engine(
         request: Request,
-        engine_name: str = Query(min_length=1, max_length=80),
-        engine_version: str = Query(min_length=1, max_length=60),
-        source_url: str | None = Query(default=None, max_length=350)
+        engine_name: str | None = Query(default=None, max_length=80),
+        engine_version: str | None = Query(default=None, max_length=60),
+        source_url: str | None = Query(default=None, max_length=350),
+        book_sha256: str | None = Query(
+            default=None, pattern=r"^[0-9a-fA-F]{64}$"
+        )
     ):
-        reference, book, issue = arena_ready()
+        # No user-entered engine name, version, hash or UCI settings needed.
+        # Engine identity comes from a restricted probe inside the arena VM.
+        reference, book, issue = arena_ready(
+            book_sha256.lower() if book_sha256 else None
+        )
         if issue:
             raise HTTPException(503, issue)
-        if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/zip":
-            raise HTTPException(415, "Send raw ZIP bytes with Content-Type: application/zip")
+        if request.headers.get("content-type", "").split(";")[0].strip().lower() not in (
+            "application/zip", "application/octet-stream",
+            "application/x-msdownload", "application/vnd.microsoft.portable-executable"
+        ):
+            raise HTTPException(
+                415, "Send a raw x86_64 Windows EXE or Linux ELF ZIP"
+            )
         if source_url:
             parsed = urlsplit(source_url)
             if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
@@ -282,10 +416,8 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         # reverse proxy/uvicorn setup may normalize request.client.host.
         ip = request.client.host if request.client else "unknown"
         ip_hash = hmac.new(salt, ip.encode(), hashlib.sha256).hexdigest()
-        name = engine_name.strip()
-        version = engine_version.strip()
-        if not name or not version:
-            raise HTTPException(422, "Engine name and version cannot be blank")
+        name = (engine_name or "").strip() or "UCI detection pending"
+        version = (engine_version or "").strip() or "automatic"
         with connection() as db:
             db.execute("BEGIN IMMEDIATE")
             recent = db.execute(
@@ -301,14 +433,6 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             ).fetchone()[0]
             if waiting >= MAX_QUEUED:
                 raise HTTPException(503, "Arena queue is full")
-            duplicate = db.execute(
-                "SELECT id FROM arena_entries WHERE ip_hash=? AND "
-                "engine_name=? AND engine_version=? AND status "
-                "IN ('uploading','queued','running')",
-                (ip_hash, name, version)
-            ).fetchone()
-            if duplicate:
-                raise HTTPException(409, "An identical engine submission is already pending")
             cursor = db.execute("""
                 INSERT INTO arena_entries(
                     engine_name,engine_version,source_url,ip_hash,
@@ -321,7 +445,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             entry_id = cursor.lastrowid
 
         temp_path = uploads_dir / f"{entry_id}.incoming"
-        destination = uploads_dir / f"{entry_id}.zip"
+        destination = None
         digest = hashlib.sha256()
         size = 0
         try:
@@ -329,24 +453,34 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 async for part in request.stream():
                     size += len(part)
                     if size > MAX_UPLOAD_BYTES:
-                        raise HTTPException(413, "ZIP upload exceeds 128 MiB")
+                        raise HTTPException(413, "EXE/ZIP upload exceeds 128 MiB")
                     if used_bytes() + len(part) > 4_250_000_000:
                         raise HTTPException(507, "Arena storage budget exceeded")
                     output.write(part)
                     digest.update(part)
                 if size < 64:
-                    raise HTTPException(422, "Upload is not a valid ZIP archive")
+                    raise HTTPException(422, "Upload is not a valid EXE/ZIP archive")
                 output.flush()
                 os.fsync(output.fileno())
-            details = validate_archive(temp_path)
+            details = inspect_candidate(temp_path)
+            if details.platform == "windows_x86_64" and (
+                os.getenv("OPENFISHTEST_WINDOWS_ARENA") != "1"
+            ):
+                raise HTTPException(
+                    503, "Windows EXE sandbox unavailable; configure the "
+                         "dedicated rootless Wine VM runner first"
+                )
+            ext = ".exe" if details.platform == "windows_x86_64" else ".zip"
+            destination = uploads_dir / f"{entry_id}{ext}"
             # Content digest is for reproducibility, not a guarantee of safety.
             os.replace(temp_path, destination)
             with connection() as db:
                 db.execute(
                     "UPDATE arena_entries SET status='queued',archive_path=?,"
-                    "archive_sha256=?,engine_sha256=?,archive_bytes=? WHERE id=?",
+                    "archive_sha256=?,engine_sha256=?,archive_bytes=?,"
+                    "engine_platform=? WHERE id=?",
                     (str(destination.relative_to(data_dir)), digest.hexdigest(),
-                     details.engine_sha256, size, entry_id)
+                     details.engine_sha256, size, details.platform, entry_id)
                 )
                 db.execute(
                     "INSERT INTO arena_events(arena_id,kind,summary,created_at) "
@@ -357,11 +491,15 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
                 "id": entry_id, "status": "queued", "games": GAMES,
                 "pass_points": PASS_SCORE_X2 / 2,
                 "archive_sha256": digest.hexdigest(),
-                "note": "Submitted build is quarantined; not executed by public volunteer workers"
+                "engine_platform": details.platform,
+                "engine_sha256": details.engine_sha256,
+                "note": "SHA-256 computed automatically; UCI identity will be probed "
+                        "inside isolated VM. No volunteer PC execution."
             }
         except (UnsafeArchive, OSError, HTTPException, ValueError) as exc:
             for path in (temp_path, destination):
-                path.unlink(missing_ok=True)
+                if path is not None:
+                    path.unlink(missing_ok=True)
             with connection() as db:
                 db.execute(
                     "UPDATE arena_entries SET status='invalid',archive_path=NULL,"
@@ -378,7 +516,8 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         with connection() as db:
             return [dict(r) for r in db.execute(
                 "SELECT id,engine_name,engine_version,source_url,"
-                "archive_sha256,engine_sha256,archive_bytes,"
+                "archive_sha256,engine_sha256,archive_bytes,engine_platform,"
+                "uci_name,uci_author,uci_options_json,"
                 "reference_version,reference_sha256,book_sha256,"
                 "status,wins,draws,losses,score,created_at,completed_at,"
                 "released_url,error_class,archive_path,pgn_path "
@@ -418,8 +557,11 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         if sha256_path(file_path) != entry["archive_sha256"]:
             raise HTTPException(409, "Candidate integrity check failed")
         return FileResponse(
-            file_path, media_type="application/zip",
-            filename=f"OpenFishtest-candidate-{entry_id}-QUARANTINED.zip",
+            file_path, media_type="application/octet-stream",
+            filename=(
+                f"OpenFishtest-candidate-{entry_id}-QUARANTINED"
+                f"{file_path.suffix}"
+            ),
             headers={"Cache-Control":"no-store", "X-Content-Type-Options":"nosniff"}
         )
 

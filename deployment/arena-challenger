@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Trusted fixed launcher for the quarantined candidate (never uploaded)."""
+import os
+from pathlib import Path
+
+linux = Path("/challenger/engine")
+windows = Path("/challenger/engine.exe")
+if linux.is_file():
+    os.chdir("/challenger")
+    os.execv(str(linux), [str(linux)])
+if windows.is_file():
+    os.environ["HOME"] = "/tmp"
+    os.environ["WINEPREFIX"] = "/tmp/openfishtest-wine"
+    os.environ["XDG_CONFIG_HOME"] = "/tmp/.config"
+    os.environ["WINEDEBUG"] = "-all"
+    os.chdir("/challenger")
+    # Debian wine package provides /usr/bin/wine for PE64 binaries.
+    os.execv("/usr/bin/wine", ["/usr/bin/wine", str(windows)])
+raise SystemExit("No supported challenger executable staged")
