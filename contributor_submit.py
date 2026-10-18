@@ -88,7 +88,9 @@ def submit(pgn_path, epd_path, progress=print):
     if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login):
         raise SubmissionError("Could not identify the authenticated GitHub account")
     run(["gh", "auth", "setup-git"], env=env)
-    fork = _fork_if_needed(login, env)
+    # The owner already owns the canonical repo: it is not a fork.
+    # Use a short-lived branch in the same repository for owner submissions.
+    fork = TARGET if login.casefold() == TARGET.split("/")[0].casefold() else _fork_if_needed(login, env)
     contribution_id = secrets.token_hex(10)
     branch = f"community-{contribution_id}"
     progress(f"Preparing a data-only pull request from {fork}...")
