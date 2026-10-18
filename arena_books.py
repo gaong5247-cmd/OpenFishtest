@@ -94,11 +94,23 @@ def _epd_positions(source):
         seen_records += 1
         if seen_records > MAX_SCAN_RECORDS:
             break
-        board = chess.Board()
         try:
-            board.set_epd(line.strip())
+            # A number of popular opening books use six-field FEN lines
+            # despite having a .epd extension. EPD itself uses four
+            # position fields (optionally followed by EPD operations).
+            # Try EPD first to preserve its operations and then FEN6.
+            board = chess.Board()
+            try:
+                board.set_epd(line.strip())
+            except (ValueError, TypeError):
+                fields = line.strip().split()
+                if len(fields) != 6:
+                    raise
+                board = chess.Board(line.strip())
+            if not board.is_valid():
+                raise ValueError("Invalid chess position")
         except (ValueError, TypeError) as exc:
-            raise InvalidBook(f"Invalid EPD line {line_number}") from exc
+            raise InvalidBook(f"Invalid EPD/FEN line {line_number}") from exc
         yield board
 
 
