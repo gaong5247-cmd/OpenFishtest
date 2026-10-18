@@ -170,15 +170,28 @@ def validate_pair(payload_pgn: bytes, payload_epd: bytes) -> CommunityReport:
     pairs = len(raw_games) // 2
     if len(openings) < pairs:
         raise InvalidCommunitySubmission("EPD has fewer opening positions than PGN pairs")
-    pairs_fen = [recorded_fens[i] for i in range(0, len(raw_games), 2)]
+    # Fastchess writes concurrent games in completion order. Build the
+    # unique opening list from the PGN irrespective of finish order.
+    # Duplicate starting positions are permitted when the book is reused.
+    from collections import Counter
+    pair_counts = Counter(recorded_fens)
+    if any(count % 2 for count in pair_counts.values()):
+        raise InvalidCommunitySubmission(
+            "Each PGN opening must have complete color-reversed game pairs"
+        )
     epd_fen = [opening[0] for opening in openings]
-    # A partial worker batch can use a contiguous subset of a larger book.
+    # A 100-pair test may have used the first 100 book positions; for
+    # concurrent PGN, match as a multiset of FEN positions instead of
+    # assuming PGN order. The book remains immutable and hash-pinned.
+    expected = Counter({fen: count // 2 for fen, count in pair_counts.items()})
     index = next((
         offset for offset in range(len(openings) - pairs + 1)
-        if epd_fen[offset:offset + pairs] == pairs_fen
+        if Counter(epd_fen[offset:offset + pairs]) == expected
     ), None)
     if index is None:
-        raise InvalidCommunitySubmission("PGN starting FEN pairs do not match contiguous EPD openings")
+        raise InvalidCommunitySubmission(
+            "PGN opening FEN pairs do not match the selected EPD book window"
+        )
 
     # Reconstruct a canonical, comment-free PGN: no user-provided comments,
     # event metadata, URLs, variants or instructions are carried forward.

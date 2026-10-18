@@ -53,3 +53,53 @@ def test_all_draws():
     )
     result = parse_pgn_results(pgn, 2)
     assert (result.wins, result.draws, result.losses) == (0, 2, 0)
+
+
+
+def test_interleaved_concurrent_pgn_pairs():
+    import chess
+    board = chess.Board()
+    board.push_san("d4")
+    fen2 = board.fen()
+    # Fastchess concurrency: games finish in non-paired order.
+    pgn = (
+        make_game("Challenger", "Stockless", "1-0")
+        + make_game("Challenger", "Stockless", "1/2-1/2", fen2)
+        + make_game("Stockless", "Challenger", "0-1")
+        + make_game("Stockless", "Challenger", "1/2-1/2", fen2)
+    )
+    # The sample fixture starts each game with e4 e5, so the custom
+    # d4 position cannot accept e4. Use two valid starting boards below.
+    from io import StringIO
+    import chess.pgn
+    def game(white, black, result, fen):
+        board = chess.Board(fen)
+        first = next(iter(board.legal_moves))
+        g = chess.pgn.Game()
+        g.setup(board)
+        g.headers["White"], g.headers["Black"], g.headers["Result"] = (
+            white, black, result
+        )
+        g.add_variation(first)
+        return str(g) + "\n\n"
+    pgn = (
+        game("Challenger","Stockless","1-0",chess.STARTING_FEN)
+        + game("Challenger","Stockless","1/2-1/2",fen2)
+        + game("Stockless","Challenger","0-1",chess.STARTING_FEN)
+        + game("Stockless","Challenger","1/2-1/2",fen2)
+    ).encode()
+    result = parse_pgn_results(pgn, 4)
+    assert (result.wins, result.draws, result.losses) == (2, 2, 0)
+    assert result.penta == (0, 0, 1, 0, 1)
+
+
+def test_interleaved_missing_reverse_color_is_rejected():
+    pgn = (
+        make_game("Challenger", "Stockless", "1-0") * 2
+        + make_game("Stockless", "Challenger", "0-1")
+        + make_game("Stockless", "Challenger", "1/2-1/2")
+    )
+    # Both colors exist for the same opening, so this is two legal pairs.
+    assert parse_pgn_results(pgn, 4).games == 4
+    with pytest.raises(MatchValidationError, match="reverse"):
+        parse_pgn_results(make_game("Challenger","Stockless","1-0") * 4, 4)
