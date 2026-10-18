@@ -273,3 +273,10 @@ tbody tr:hover{background:#ffffff05}
   .footer>span{order:3;width:100%}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button{transition:none}}
+
+.score-button{border:0;background:transparent;padding:2px 0;color:var(--mint);
+  font-weight:850;font-size:14px;cursor:pointer;font-variant-numeric:tabular-nums;
+  text-decoration:underline;text-decoration-color:#69e8c866;
+  text-underline-offset:4px}
+.score-button:hover{color:#c0f9eb;text-decoration-color:currentColor}
+.score-button:focus-visible{border-radius:4px}
