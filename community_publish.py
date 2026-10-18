@@ -151,7 +151,7 @@ class GitHub:
         commit = self.get(f"repos/{self.repo}/git/commits/{head_sha}")
         return head_sha, commit["tree"]["sha"]
 
-    def commit_publication(self, files: dict[str, bytes], entry: dict):
+    def commit_publication(self, files: dict[str, bytes], entry: dict, *, approved_backfill=False):
         blob_shas = {
             path: self.write_blob(data) for path, data in files.items()
         }
@@ -166,7 +166,9 @@ class GitHub:
             recent = [
                 item for item in rows if _recent(item.get("submitted_at"), now)
             ]
-            if sum(1 for item in recent if item.get("contributor") == entry["contributor"]) >= MAX_PER_CONTRIBUTOR_DAILY:
+            # Only the separate administrator-authorized workflow may opt in.
+            # Normal PR events/metadata never control this keyword argument.
+            if not approved_backfill and sum(1 for item in recent if item.get("contributor") == entry["contributor"]) >= MAX_PER_CONTRIBUTOR_DAILY:
                 raise InvalidCommunitySubmission("Contributor daily limit: 3 valid submissions")
             if len(recent) >= MAX_COMMUNITY_DAILY:
                 raise InvalidCommunitySubmission("Community daily limit: 20 valid submissions")
@@ -236,11 +238,15 @@ def _recent(value, now):
         return False
 
 
-def _validate_event(event, repo=REPO):
+def _validate_event(event, repo=REPO, *, merged_head=None):
     pr = event.get("pull_request")
     if not isinstance(pr, dict):
         raise InvalidCommunitySubmission("No pull request event in payload")
-    if pr.get("state") != "open" or pr.get("draft"):
+    accepted_state = pr.get("state") == "open" if merged_head is None else (
+        pr.get("state") == "closed" and pr.get("merged") is True
+        and pr.get("head", {}).get("sha") == merged_head
+    )
+    if not accepted_state or pr.get("draft"):
         raise InvalidCommunitySubmission("The submitted PR is closed or a draft")
     if pr.get("base", {}).get("ref") != DEFAULT_BRANCH or pr.get("base", {}).get("repo", {}).get("full_name") != repo:
         raise InvalidCommunitySubmission("Target branch/repository mismatch")
@@ -258,13 +264,15 @@ def _validate_event(event, repo=REPO):
     return pr
 
 
-def publication_plan(gh, event):
+def publication_plan(gh, event, *, merged_head=None):
     """Read only exact immutable Git blobs, never PR checkout or scripts."""
-    pr = _validate_event(event)
+    pr = _validate_event(event, merged_head=merged_head)
     number = pr["number"]
     fresh = gh.get(f"repos/{gh.repo}/pulls/{number}")
-    if fresh.get("head", {}).get("sha") != pr["head"]["sha"] or fresh.get("state") != "open":
+    if fresh.get("head", {}).get("sha") != pr["head"]["sha"] or (merged_head is None and fresh.get("state") != "open"):
         raise InvalidCommunitySubmission("PR changed during validation; wait for its newest event")
+    if merged_head is not None:
+        _validate_event({"pull_request": fresh}, merged_head=merged_head)
     if fresh.get("changed_files") != 2:
         raise InvalidCommunitySubmission("Exactly two PGN/EPD changes are required")
     changes = gh.get(f"repos/{gh.repo}/pulls/{number}/files?per_page=100")
@@ -272,6 +280,10 @@ def publication_plan(gh, event):
     blobs = {}
     for item in changes:
         path = item["filename"]
+        if merged_head is not None:
+            record = gh.get(f"repos/{pr['head']['repo']['full_name']}/contents/{quote(path, safe='/')}?ref={merged_head}")
+            if record.get("type") != "file" or record.get("sha") != item["sha"]:
+                raise InvalidCommunitySubmission("PR file does not match the approved immutable head")
         limit = MAX_COMMUNITY_PGN if path.endswith(".pgn") else MAX_COMMUNITY_EPD
         blobs[path.rsplit("/", 1)[1]] = gh.blob_bytes(
             pr["head"]["repo"]["full_name"], item["sha"], limit
@@ -288,6 +300,8 @@ def publication_plan(gh, event):
     entry["pgn_path"] = files.keys().__iter__().__next__()
     entry["epd_path"] = f"docs/data/community/{submission_id}/openings.epd"
     entry["source_pr"] = number
+    if merged_head is not None:
+        _validate_event({"pull_request": gh.get(f"repos/{gh.repo}/pulls/{number}")}, merged_head=merged_head)
     return files, entry
 
 

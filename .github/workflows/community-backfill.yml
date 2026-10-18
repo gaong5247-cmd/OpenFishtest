@@ -1,0 +1,45 @@
+name: Administrator community backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Merged PGN/EPD PR number approved for recovery
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact immutable PR head SHA (40 lowercase hex characters)
+        required: true
+        type: string
+      reason:
+        description: Public administrator approval reason (10-500 characters)
+        required: true
+        type: string
+
+# Subset of the existing publisher permissions; no new credentials or access.
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: openfishtest-community-publications
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    if: github.repository == 'gaong5247-cmd/OpenFishtest' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Authorize administrator and validate immutable data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python community_backfill.py
