@@ -167,6 +167,7 @@ class ContributorWindow:
             games = int(self.games.get())
             threads = int(round(self.concurrency.get()))
             auto = self.publish.get()
+            tc = self.tc.get()
             if auto and (not shutil.which("gh") or not shutil.which("git")):
                 raise ValueError(
                     "자동 제출에는 GitHub CLI와 Git이 필요합니다. "
@@ -189,7 +190,7 @@ class ContributorWindow:
                     paths["fastchess"], paths["stockless"],
                     paths["challenger"], paths["book"],
                     concurrency=threads, games=games,
-                    tc=self.tc.get(), stop_event=self.stop_event,
+                    tc=tc, stop_event=self.stop_event,
                     progress=lambda line: self.events.put(("log", line)),
                     submit=auto
                 )
