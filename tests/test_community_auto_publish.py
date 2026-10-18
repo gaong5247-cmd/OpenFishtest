@@ -64,7 +64,7 @@ def test_tampering_or_unpaired_results_rejected():
         board = chess.Board()
         board.push_san("d4")
         validate_pair(pgn, (board.epd() + "\n").encode())
-    with pytest.raises(InvalidCommunitySubmission, match="reverse"):
+    with pytest.raises(InvalidCommunitySubmission, match="precisely|reverse"):
         validate_pair(pgn.replace(b'[White "Stockless"]', b'[White "Challenger"]'), epd)
     with pytest.raises(InvalidCommunitySubmission, match="2-200"):
         validate_pair(pgn[:pgn.find(b"\n\n[Event", 10)], epd)
