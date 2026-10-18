@@ -10,6 +10,7 @@ Security boundaries:
 - Public endpoints reveal metadata and real scores, never download candidate
   binaries, local paths, private identities or administrator credentials.
 """
+import asyncio
 import hashlib
 import io
 import hmac
@@ -32,12 +33,14 @@ from arena_core import (
 )
 from match_protocol import sha256_path
 from candidate_formats import inspect_candidate
-from arena_books import InvalidBook, normalize_book, persisted_book, MAX_BOOK_BYTES
+from arena_books import (InvalidBook, normalize_book_file, persisted_book,
+                         MAX_BOOK_BYTES, MAX_NORMALIZED_BYTES)
 
 MAX_QUEUED = 6
 MAX_PER_IP_PER_DAY = 2
 MAX_CONTENT_LENGTH = MAX_UPLOAD_BYTES
 UPLOADS_ENABLED_VAR = "OPENFISHTEST_ARENA_UPLOADS"
+BOOK_RESERVATION_BYTES = MAX_BOOK_BYTES + MAX_NORMALIZED_BYTES + 64 * 1024 * 1024
 DAILY_SECONDS = 86_400
 
 
@@ -88,6 +91,13 @@ def setup_arena_schema(connection):
             );
             CREATE INDEX IF NOT EXISTS idx_arena_books_owner
                 ON arena_books(ip_hash,created_at);
+            CREATE TABLE IF NOT EXISTS arena_book_attempts (
+                id INTEGER PRIMARY KEY,
+                ip_hash TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_book_attempts_ip
+                ON arena_book_attempts(ip_hash,created_at);
             CREATE TABLE IF NOT EXISTS arena_events (
                 id INTEGER PRIMARY KEY,
                 arena_id INTEGER NOT NULL REFERENCES arena_entries(id),
@@ -214,6 +224,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
 
     books_dir = data_dir / "arena" / "books"
     books_dir.mkdir(parents=True, exist_ok=True)
+    book_upload_lock = asyncio.Lock()
 
     def arena_ready(selected_book=None):
         if os.getenv(UPLOADS_ENABLED_VAR) != "1":
@@ -248,7 +259,8 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         # operational even without an operator-provided default book.
         book_uploads_ready = (
             os.getenv(UPLOADS_ENABLED_VAR) == "1" and
-            reference is not None and used_bytes() < 4_000_000_000
+            reference is not None and
+            used_bytes() + BOOK_RESERVATION_BYTES < 4_250_000_000
         )
         return {
             "accepting": issue is None,
@@ -283,7 +295,7 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
         request: Request,
         filename: str = Query(min_length=5, max_length=120)
     ):
-        """Drag and drop EPD/PGN: normalize to EPD and pin by server-computed SHA."""
+        """Stream up to 200 MiB to disk; persist only a small, validated EPD."""
         if os.getenv(UPLOADS_ENABLED_VAR) != "1":
             raise HTTPException(503, "Arena uploads not enabled")
         if request.headers.get("content-type", "").split(";")[0].lower().strip() not in (
@@ -293,56 +305,115 @@ def register_arena_api(app: FastAPI, connection, get_reference_id,
             raise HTTPException(415, "Upload raw .epd or .pgn content")
         if not filename.lower().endswith((".epd", ".pgn")):
             raise HTTPException(422, "Expected .epd or .pgn opening book")
-        if used_bytes() > 4_000_000_000:
-            raise HTTPException(507, "Arena data directory nearing quota")
-        ip = request.client.host if request.client else "unknown"
-        identity = hmac.new(salt, ip.encode(), hashlib.sha256).hexdigest()
-        with connection() as db:
-            daily_count = db.execute(
-                "SELECT COUNT(*) FROM arena_books WHERE ip_hash=? AND created_at>?",
-                (identity, time.time() - DAILY_SECONDS)
-            ).fetchone()[0]
-            if daily_count >= 3:
-                raise HTTPException(429, "Opening book daily limit reached (3)")
-            all_count = db.execute("SELECT COUNT(*) FROM arena_books").fetchone()[0]
-            if all_count >= 80:
-                raise HTTPException(503, "Arena book capacity is full")
-        data = bytearray()
-        async for part in request.stream():
-            data.extend(part)
-            if len(data) > MAX_BOOK_BYTES:
-                raise HTTPException(413, "Opening book exceeds 5 MiB")
-        try:
-            book = normalize_book(bytes(data), filename)
-        except InvalidBook as exc:
-            raise HTTPException(422, str(exc)) from exc
-        target = books_dir / f"{book.digest}.epd"
-        if not target.exists():
-            staging = books_dir / f".{secrets.token_hex(12)}.incoming"
+        length_header = request.headers.get("content-length")
+        if length_header:
             try:
-                with staging.open("xb") as writer:
-                    writer.write(book.content)
+                length = int(length_header)
+            except ValueError as exc:
+                raise HTTPException(400, "Invalid Content-Length") from exc
+            if length > MAX_BOOK_BYTES:
+                raise HTTPException(413, "Opening book exceeds 200 MiB")
+        identity = hmac.new(
+            salt, (request.client.host if request.client else "unknown").encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        # One in-flight book import per app process: the source remains
+        # temporary and is never kept in memory or stored long-term.
+        async with book_upload_lock:
+            if used_bytes() + BOOK_RESERVATION_BYTES >= 4_250_000_000:
+                raise HTTPException(
+                    507, "Insufficient data quota for a 200 MiB upload"
+                )
+            with connection() as db:
+                db.execute("BEGIN IMMEDIATE")
+                daily_count = db.execute(
+                    "SELECT COUNT(*) FROM arena_book_attempts "
+                    "WHERE ip_hash=? AND created_at>?",
+                    (identity, time.time() - DAILY_SECONDS)
+                ).fetchone()[0]
+                if daily_count >= 3:
+                    raise HTTPException(
+                        429, "Maximum three book upload attempts per day"
+                    )
+                distinct_count = db.execute(
+                    "SELECT COUNT(*) FROM arena_books"
+                ).fetchone()[0]
+                if distinct_count >= 80:
+                    raise HTTPException(503, "Arena book capacity is full")
+                db.execute(
+                    "INSERT INTO arena_book_attempts(ip_hash,created_at) "
+                    "VALUES(?,?)", (identity, time.time())
+                )
+
+            incoming = books_dir / f".{secrets.token_hex(16)}.incoming"
+            try:
+                count = 0
+                # No bytearray growing toward 200 MiB. Rejections are bounded
+                # by the disk-budget reservation and input length.
+                with incoming.open("xb") as writer:
+                    async for part in request.stream():
+                        count += len(part)
+                        if count > MAX_BOOK_BYTES:
+                            raise HTTPException(
+                                413, "Opening book exceeds 200 MiB"
+                            )
+                        writer.write(part)
+                    if not count:
+                        raise HTTPException(422, "Empty opening book")
                     writer.flush()
                     os.fsync(writer.fileno())
-                os.replace(staging, target)
-                target.chmod(0o444)
+
+                # Parse in worker thread so the API event loop is responsive.
+                # The parser examines a bounded prefix and keeps <=500 EPD
+                # positions; the original 200 MiB upload is then deleted.
+                try:
+                    book = await asyncio.to_thread(
+                        normalize_book_file, incoming, filename
+                    )
+                except InvalidBook as exc:
+                    raise HTTPException(422, str(exc)) from exc
+
+                target = books_dir / f"{book.digest}.epd"
+                if not target.exists():
+                    staging = books_dir / f".{secrets.token_hex(16)}.normalized"
+                    try:
+                        with staging.open("xb") as writer:
+                            writer.write(book.content)
+                            writer.flush()
+                            os.fsync(writer.fileno())
+                        os.replace(staging, target)
+                        target.chmod(0o444)
+                    finally:
+                        staging.unlink(missing_ok=True)
+                else:
+                    try:
+                        persisted_book(target, book.digest)
+                    except InvalidBook as exc:
+                        raise HTTPException(
+                            409, "Existing book hash verification failed"
+                        ) from exc
+
+                with connection() as db:
+                    db.execute(
+                        "INSERT OR IGNORE INTO arena_books "
+                        "(digest,original_format,positions,ip_hash,created_at) "
+                        "VALUES(?,?,?,?,?)",
+                        (book.digest, book.original_format, book.positions,
+                         identity, time.time())
+                    )
+                return {
+                    "book_sha256": book.digest,
+                    "positions": book.positions,
+                    "input_format": book.original_format,
+                    "normalized_format": "epd",
+                    "input_bytes": count,
+                    "max_upload_bytes": MAX_BOOK_BYTES,
+                    "note": "Original uploaded book deleted after streaming parse; "
+                            "at most 500 distinct legal positions retained"
+                }
             finally:
-                staging.unlink(missing_ok=True)
-        with connection() as db:
-            db.execute(
-                "INSERT OR IGNORE INTO arena_books "
-                "(digest,original_format,positions,ip_hash,created_at) "
-                "VALUES(?,?,?,?,?)",
-                (book.digest, book.original_format, book.positions,
-                 identity, time.time())
-            )
-        return {
-            "book_sha256": book.digest,
-            "positions": book.positions,
-            "input_format": book.original_format,
-            "normalized_format": "epd",
-            "note": "Opening positions normalized, SHA-256 automatically pinned"
-        }
+                incoming.unlink(missing_ok=True)
 
     @app.get("/api/arena/entries/{entry_id}")
     def arena_entry_public(entry_id: int):
