@@ -288,15 +288,27 @@ class ContributorWindow:
                     self._message("오류: " + value)
                     self.status.set("실패 · 로그를 확인하세요")
                 elif kind == "success":
-                    self._message(
-                        "완료! " + (
-                            value.get("pull_request", "로컬 PGN/EPD 생성")
+                    if value.get("submitted"):
+                        url = value.get("publication_url", "")
+                        method = value.get("upload_mode")
+                        if method == "owner_direct":
+                            self._message(
+                                "✓ 대국 완료 → 관리자 GitHub 업로드 접수됨 "
+                                "(PR 없음). Actions 검증 후 공개 예정."
+                            )
+                        else:
+                            self._message(
+                                "✓ 대국 완료 → Contributor PR 자동 제출됨. "
+                                "Actions 검증 후 공개 예정."
+                            )
+                        if url:
+                            self._message("GitHub 게시 진행 확인: " + url)
+                        self.status.set(
+                            "GitHub Actions 검증·게시 대기 중 (로컬 PGN 보존)"
                         )
-                    )
-                    self.status.set(
-                        "GitHub 자동 검증 대기" if value["submitted"]
-                        else "로컬 대국 종료"
-                    )
+                    else:
+                        self._message("✓ 로컬 PGN/EPD 생성 완료")
+                        self.status.set("로컬 대국 종료 · 자동 제출 꺼짐")
                 elif kind == "finished":
                     self.busy = False
                     self.start.configure(state="normal")
