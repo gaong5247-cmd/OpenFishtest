@@ -227,12 +227,15 @@
       first.append(node(
         "div", item.contributor || "Unknown", "td-primary"
       ));
-      const line = node(
-        "div",
-        formatDate(item.submitted_at) +
-        (Number.isSafeInteger(item.source_pr) ? " · PR #" + item.source_pr : ""),
-        "td-sub"
-      );
+      const line = node("div", formatDate(item.submitted_at), "td-sub");
+      if (Number.isSafeInteger(item.source_pr) && item.source_pr > 0) {
+        const link = node("a", " · PR #" + item.source_pr);
+        link.href = GH_PR_BASE + item.source_pr;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.title = t("table_pr");
+        line.append(link);
+      }
       first.append(line);
       makeCell(row, formatNumber(stats.games), "td-mono");
       makeCell(
