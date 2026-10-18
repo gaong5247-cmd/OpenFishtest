@@ -110,19 +110,19 @@ def submit(pgn_path, epd_path, progress=print):
              "commit", "-m", f"data: submit PGN and EPD {contribution_id}"], env=env)
         run(["git", "-C", str(clone), "push", "-u",
              f"https://github.com/{fork}.git", branch], env=env)
-    message = (
-        "PGN and EPD only. Automatically publish after strict legal game, "
-        "color-swapped pair, and EPD opening verification. "
-        "This report is not independent proof of engine provenance. "
-        "No code, binary or workflow files are proposed."
-    )
-    progress("Opening the automatically validated GitHub contribution...")
-    pr_url = run([
-        "gh", "pr", "create", "--repo", TARGET,
-        "--base", "main", "--head", f"{login}:{branch}",
-        "--title", f"[COMMUNITY PGN/EPD] {contribution_id}",
-        "--body", message,
-    ], env=env).splitlines()[-1].strip()
+        message = (
+            "PGN and EPD only. Automatically publish after strict legal game, "
+            "color-swapped pair, and EPD opening verification. "
+            "This report is not independent proof of engine provenance. "
+            "No code, binary or workflow files are proposed."
+        )
+        progress("Opening the automatically validated GitHub contribution...")
+        pr_url = run([
+            "gh", "pr", "create", "--repo", TARGET,
+            "--base", "main", "--head", f"{login}:{branch}",
+            "--title", f"[COMMUNITY PGN/EPD] {contribution_id}",
+            "--body", message,
+        ], cwd=clone, env=env).splitlines()[-1].strip()
     if not pr_url.startswith(f"https://github.com/{TARGET}/pull/"):
         raise SubmissionError("GitHub did not return an expected pull-request link")
     progress(f"Submitted! Actions will publish the two sanitized files: {pr_url}")
