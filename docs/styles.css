@@ -280,3 +280,5 @@ tbody tr:hover{background:#ffffff05}
   text-underline-offset:4px}
 .score-button:hover{color:#c0f9eb;text-decoration-color:currentColor}
 .score-button:focus-visible{border-radius:4px}
+
+.td-sub a{color:#73dfc5;font-weight:760}.td-sub a:hover{text-decoration:underline}
