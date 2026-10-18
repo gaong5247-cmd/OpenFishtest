@@ -161,7 +161,7 @@
     put(
       "featured-points",
       formatPoints(result.points) + " / " +
-      formatNumber(result.games) + " " + t("featured_points").split("/")[0].trim()
+      formatNumber(result.games) + (locale === "ko" ? "점" : " points")
     );
     put("featured-check", t(result.passedScreen ?
       "featured_screen_above" : "featured_screen_below"));
@@ -308,9 +308,9 @@
   }
 
   function setCalculator(stats) {
-    put("calc-wins", stats.wins);
-    put("calc-draws", stats.draws);
-    put("calc-losses", stats.losses);
+    $("calc-wins").value = String(stats.wins);
+    $("calc-draws").value = String(stats.draws);
+    $("calc-losses").value = String(stats.losses);
     calculatorTouched = true;
     renderCalculator();
   }
