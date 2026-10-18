@@ -1,3 +1,29 @@
+## Bulk re-submit existing PGN results
+
+Existing `OpenFishtest-Results/match-*` games can be revalidated and submitted
+without running Fastchess again. Preview all matches first:
+
+```powershell
+.\.venv\Scripts\python.exe contributor_backfill.py
+```
+
+Then submit up to **3 valid matches per rolling 24h**:
+
+```powershell
+.\.venv\Scripts\python.exe contributor_backfill.py --submit
+```
+
+Each valid match creates its own data-only PGN+EPD GitHub PR. A local
+`OpenFishtest-Results/.community-submissions.json` ledger records PR URLs,
+timestamps, games and PGN hashes. Repeated runs skip local duplicates and
+published community PGN hashes. Local original PGNs/EPDs are never deleted.
+
+Invalid or partial PGNs and missing EPDs are skipped, not fabricated.
+The GitHub-only route still limits each PR to 2MB PGN, 512KiB EPD and
+2-200 even-numbered games. If a previous PR was submitted outside this
+script and has not appeared in the public index yet, check GitHub PRs first.
+
+---
 # OpenFishtest ♞
 
 An independent, free, open-source **UCI chess engine testing prototype**.
