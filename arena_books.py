@@ -151,7 +151,10 @@ def normalize_book(raw: bytes, filename: str) -> NormalizedBook:
     """Small-input convenience function retained for existing tests."""
     if not raw or len(raw) > MAX_BOOK_BYTES:
         raise InvalidBook("Book upload must be 1 byte to 200 MiB")
-    return _normalize_source(io.StringIO(raw.decode("utf-8-sig")), filename)
+    try:
+        return _normalize_source(io.StringIO(raw.decode("utf-8-sig")), filename)
+    except UnicodeError as exc:
+        raise InvalidBook("Opening book must be UTF-8 text") from exc
 
 
 def normalize_book_file(path: Path, filename: str) -> NormalizedBook:
