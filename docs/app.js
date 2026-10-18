@@ -348,6 +348,55 @@ function renderReplay(previousGameId = null) {
   $("download-pgn").disabled = !game.pgn;
 }
 
+function renderCommunityIndex(data, error = false) {
+  const rows = $("community-rows");
+  if (!rows) return;
+  rows.replaceChildren();
+  const entries = Array.isArray(data?.entries) ? data.entries : [];
+  if (error || entries.length === 0) {
+    return emptyRow(rows, 5, translate(
+      error ? "community_error" : "community_empty"
+    ));
+  }
+  for (const entry of entries.slice(0, 30)) {
+    if (!/^[0-9a-f]{12,40}$/.test(String(entry.id || ""))) continue;
+    const tr = document.createElement("tr");
+    const author = tableCell(tr, String(entry.contributor || "Unknown"), "engine-name");
+    const note = document.createElement("div");
+    note.className = "engine-version";
+    note.textContent = entry.submitted_at ?
+      formatDate(entry.submitted_at) : "Unverified";
+    author.append(note);
+    tableCell(tr, formatCount(entry.games));
+    tableCell(tr, [entry.wins, entry.draws, entry.losses]
+      .map(formatCount).join(" / "));
+    tableCell(tr, String(entry.points ?? "—"), "elo");
+    const files = tableCell(tr, "", "community-downloads");
+    for (const [filename, key] of [
+      ["games.pgn", "community_pgn"],
+      ["openings.epd", "community_epd"]
+    ]) {
+      const link = document.createElement("a");
+      link.href = "./data/community/" + entry.id + "/" + filename;
+      link.rel = "noopener noreferrer";
+      link.textContent = translate(key);
+      link.setAttribute("download", "");
+      files.append(link);
+    }
+    rows.append(tr);
+  }
+  if (!rows.children.length) emptyRow(rows, 5, translate("community_empty"));
+}
+
+async function refreshCommunityIndex() {
+  try {
+    const index = await readJson("./data/community/index.json");
+    renderCommunityIndex(index);
+  } catch (_) {
+    renderCommunityIndex(null, true);
+  }
+}
+
 function render(data) {
   const previousGameId = selectedGame()?.id || null;
   current = data;
@@ -698,8 +747,13 @@ async function refresh() {
     setText("connection-detail", String(error.message || error));
     $("connection-dot").classList.remove("online");
   } finally {
+    await refreshCommunityIndex();
     $("refresh-button").disabled = false;
   }
+}
+
+function awaitCommunityWithoutBlocking() {
+  void refreshCommunityIndex();
 }
 
 function init() {
@@ -709,6 +763,7 @@ function init() {
     try { localStorage.setItem("openfishtest-language", language); } catch (_) {}
     translateStatic();
     if (current) render(current);
+    awaitCommunityWithoutBlocking();
     updateArenaControls();
   });
   $("refresh-button").addEventListener("click", refresh);
