@@ -101,7 +101,7 @@ def submit(pgn_path, epd_path, progress=print):
         destination.mkdir(parents=True, exist_ok=False)
         (destination / "games.pgn").write_bytes(report.pgn)
         (destination / "openings.epd").write_bytes(report.epd)
-        run(["git", "-C", str(clone), "add",
+        run(["git", "-C", str(clone), "add", "--force",
              f"submissions/{contribution_id}/games.pgn",
              f"submissions/{contribution_id}/openings.epd"], env=env)
         run(["git", "-C", str(clone),
