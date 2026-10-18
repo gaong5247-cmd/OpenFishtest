@@ -486,7 +486,7 @@ function setSelectedUpload(kind, file) {
   const engine = kind === "engine";
   const extension = file.name.split(".").pop()?.toLowerCase();
   const allowed = engine ? ["exe", "zip"] : ["epd", "pgn"];
-  const max = engine ? 128 * 1024 * 1024 : 5 * 1024 * 1024;
+  const max = engine ? 128 * 1024 * 1024 : 200 * 1024 * 1024;
   if (!allowed.includes(extension)) {
     if (engine) {
       selectedEngineFile = null;
@@ -568,7 +568,7 @@ function transferFile(url, file, mime, startPercent, endPercent) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
     xhr.setRequestHeader("Content-Type", mime);
-    xhr.timeout = 4 * 60 * 1000;
+    xhr.timeout = file.size > 80 * 1024 * 1024 ? 15 * 60 * 1000 : 4 * 60 * 1000;
     xhr.upload.onprogress = event => {
       if (!event.lengthComputable) return;
       const progress = event.loaded / event.total;
