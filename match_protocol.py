@@ -39,8 +39,9 @@ def sha256_path(filename: str | Path) -> str:
 def parse_pgn_results(pgn: bytes, expected_games: int) -> MatchResult:
     """Count results in paired Fastchess PGNs, verifying legal move sequences.
 
-    Names must be exactly 'Challenger' and 'Stockless'. Each consecutive
-    opening pair swaps colors and has the same starting board. Results remain
+    Names must be exactly 'Challenger' and 'Stockless'. Opening pairs
+    swap colors and have the same starting board, regardless of PGN completion
+    order under concurrent Fastchess execution. Results remain
     worker-reported; resignations and agreed draws cannot be independently
     authenticated from PGN text.
     """
@@ -118,14 +119,27 @@ def parse_pgn_results(pgn: bytes, expected_games: int) -> MatchResult:
         raise MatchValidationError(
             f"Expected {expected_games} PGN games, found {len(games)}"
         )
+    # Fastchess writes PGNs as games finish. With concurrency > 1,
+    # completion order is NOT opening-pair order. Pair by opening position
+    # and opposite engine colors, while preserving the first occurrence
+    # order of each distinct opening for the EPD book consistency check.
+    # Repeated openings can be ambiguous if the same position is reused;
+    # consume one game of each color per opening for every pair.
+    from collections import OrderedDict
+    grouped = OrderedDict()
+    for white, black, initial_fen, result, points in games:
+        bucket = grouped.setdefault(initial_fen, {True: [], False: []})
+        bucket[white == "Challenger"].append(points)
     pentanomial = [0, 0, 0, 0, 0]
-    for i in range(0, len(games), 2):
-        a, b = games[i], games[i + 1]
-        if a[0] != b[1] or a[1] != b[0]:
-            raise MatchValidationError("Pair did not reverse engine colors")
-        if a[2] != b[2]:
-            raise MatchValidationError("Both games in pair must share the opening FEN")
-        pentanomial[a[4] + b[4]] += 1
+    for fen, by_color in grouped.items():
+        white_challenger = by_color[True]
+        black_challenger = by_color[False]
+        if len(white_challenger) != len(black_challenger):
+            raise MatchValidationError(
+                "Pair did not reverse engine colors for opening FEN"
+            )
+        for a_points, b_points in zip(white_challenger, black_challenger):
+            pentanomial[a_points + b_points] += 1
     wins = sum(g[4] == 2 for g in games)
     draws = sum(g[4] == 1 for g in games)
     losses = sum(g[4] == 0 for g in games)
