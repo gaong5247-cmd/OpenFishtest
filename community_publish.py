@@ -151,7 +151,7 @@ class GitHub:
         commit = self.get(f"repos/{self.repo}/git/commits/{head_sha}")
         return head_sha, commit["tree"]["sha"]
 
-    def commit_publication(self, files: dict[str, bytes], entry: dict, *, approved_backfill=False):
+    def commit_publication(self, files: dict[str, bytes], entry: dict, *, approved_backfill=False, trusted_owner_upload=False):
         blob_shas = {
             path: self.write_blob(data) for path, data in files.items()
         }
@@ -166,11 +166,12 @@ class GitHub:
             recent = [
                 item for item in rows if _recent(item.get("submitted_at"), now)
             ]
-            # Only the separate administrator-authorized workflow may opt in.
-            # Normal PR events/metadata never control this keyword argument.
-            if not approved_backfill and sum(1 for item in recent if item.get("contributor") == entry["contributor"]) >= MAX_PER_CONTRIBUTOR_DAILY:
+            # Only trusted owner direct-upload Actions may bypass BOTH legacy
+            # PR quotas. GitHub API/storage limits still apply. The upload
+            # source's untrusted metadata never selects this flag.
+            if not (approved_backfill or trusted_owner_upload) and sum(1 for item in recent if item.get("contributor") == entry["contributor"]) >= MAX_PER_CONTRIBUTOR_DAILY:
                 raise InvalidCommunitySubmission("Contributor daily limit: 3 valid submissions")
-            if len(recent) >= MAX_COMMUNITY_DAILY:
+            if not trusted_owner_upload and len(recent) >= MAX_COMMUNITY_DAILY:
                 raise InvalidCommunitySubmission("Community daily limit: 20 valid submissions")
             index_bytes = json.dumps({
                 "version": 1,

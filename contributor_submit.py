@@ -87,10 +87,30 @@ def submit(pgn_path, epd_path, progress=print):
     login = run(["gh", "api", "user", "--jq", ".login"], env=env)
     if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login):
         raise SubmissionError("Could not identify the authenticated GitHub account")
+    # Owner: use the SAME PR-free data-only upload path as the website.
+    # Existing gh auth login credentials stay in the local CLI process;
+    # a fine-grained PAT does not have to be pasted into a browser.
+    if login.casefold() == TARGET.split("/")[0].casefold():
+        from community_direct_stage import stage_owner_upload
+        token = run(["gh", "auth", "token"], env=env).strip()
+        try:
+            result = stage_owner_upload(
+                token, report.pgn, report.epd,
+                uploader=login, progress=progress
+            )
+        except Exception as exc:
+            # Never include the token in an error message or log.
+            raise SubmissionError(
+                "Owner direct PGN/EPD upload failed: " + str(exc)[:350]
+            ) from exc
+        progress(
+            "Owner direct upload queued with NO PR and NO daily PR cap. "
+            "Check GitHub Actions for the sanitized public files."
+        )
+        return result["actions_url"]
+
     run(["gh", "auth", "setup-git"], env=env)
-    # The owner already owns the canonical repo: it is not a fork.
-    # Use a short-lived branch in the same repository for owner submissions.
-    fork = TARGET if login.casefold() == TARGET.split("/")[0].casefold() else _fork_if_needed(login, env)
+    fork = _fork_if_needed(login, env)
     contribution_id = secrets.token_hex(10)
     branch = f"community-{contribution_id}"
     progress(f"Preparing a data-only pull request from {fork}...")

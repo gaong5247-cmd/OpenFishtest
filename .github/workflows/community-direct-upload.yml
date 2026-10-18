@@ -1,0 +1,46 @@
+# Trusted PR-free publishing of existing PGN + EPD from the owner.
+# GitHub Pages is static; browser uses owner's own scoped GitHub API token.
+# NEVER checkout/execute a community-upload branch or untrusted scripts.
+name: Publish uploaded PGN & EPD (no PR)
+
+on:
+  push:
+    branches:
+      - 'community-upload/**'
+    paths:
+      - 'submissions/**'
+
+permissions:
+  contents: write
+  actions: write
+
+# Share the publication lock with the PR publisher to avoid concurrent
+# unverified updates to the same index.json / main Git tree.
+concurrency:
+  group: openfishtest-community-publications
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    if: github.repository == 'gaong5247-cmd/OpenFishtest' && github.actor == 'gaong5247-cmd'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted scripts from main ONLY
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install chess parser from trusted main branch
+        run: python -m pip install -r requirements.txt
+      - name: Validate PGN/EPD and publish only canonical data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: python community_direct_upload.py

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#081321">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://api.github.com 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="description" content="OpenFishtest: 기존 PGN/EPD 기보를 새 대국이나 Pull Request 없이 검증하고 GitHub Pages에 게시하는 관리자 업로드 화면.">
+  <title>기존 기보 게시 — OpenFishtest</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./upload.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="./#top">
+        <span class="brand-icon" aria-hidden="true">♞</span>
+        <span>OPEN<span class="brand-accent">FISH</span>TEST</span>
+      </a>
+      <nav class="nav-links" aria-label="메뉴">
+        <a href="./#community">대국 결과</a>
+        <a href="./#contribute">CPU 기여</a>
+        <a class="github-nav" href="https://github.com/gaong5247-cmd/OpenFishtest/actions/workflows/community-direct-upload.yml" target="_blank" rel="noopener noreferrer">게시 작업 확인 ↗</a>
+      </nav>
+    </header>
+
+    <main class="upload-main">
+      <div class="upload-top">
+        <span class="section-kicker">OWNER / EXISTING PGN + EPD</span>
+        <h1>대국은 끝났지?<span>기보만 올리면 됨.</span></h1>
+        <p>Fastchess를 다시 돌릴 필요도, 새 PR을 만들 필요도 없어. 이미 저장된 <strong>games.pgn</strong>과 <strong>openings.epd</strong>를 올리면 GitHub Actions가 합법적인 수순·흑백 페어·북 일치를 검사한 다음 자동 공개해.</p>
+        <div class="upload-pills">
+          <span><i class="pill-dot"></i> PR 없이 게시</span>
+          <span><i class="pill-dot"></i> 대국 재실행 없음</span>
+          <span><i class="pill-dot"></i> 로컬 원본 유지</span>
+        </div>
+      </div>
+
+      <div class="upload-grid">
+        <section class="upload-panel" aria-labelledby="file-heading">
+          <div class="panel-heading">
+            <span class="panel-step">01</span>
+            <div><h2 id="file-heading">기존 파일 선택</h2><p>윈도우 대국 결과 폴더에 있는 두 파일만 필요해.</p></div>
+          </div>
+          <div id="pgn-drop" class="upload-drop" role="button" tabindex="0" aria-label="PGN 기보 파일 선택">
+            <div class="drop-glyph" aria-hidden="true">♞</div>
+            <strong>games.pgn</strong>
+            <span>클릭하거나 PGN 파일을 여기에 드래그</span>
+            <small id="pgn-name">PGN 최대 2,000,000바이트</small>
+          </div>
+          <input id="pgn-file" type="file" accept=".pgn,application/x-chess-pgn" hidden>
+          <div id="epd-drop" class="upload-drop upload-drop-epd" role="button" tabindex="0" aria-label="EPD 오프닝북 파일 선택">
+            <div class="drop-glyph" aria-hidden="true">♙</div>
+            <strong>openings.epd</strong>
+            <span>클릭하거나 EPD 파일을 여기에 드래그</span>
+            <small id="epd-name">EPD 최대 512KiB · 대국에 사용한 정규화 북</small>
+          </div>
+          <input id="epd-file" type="file" accept=".epd,text/plain" hidden>
+          <p class="size-note">원본 200MiB 북을 직접 올리는 곳은 아님. Contributor가 생성한 <strong>openings.epd</strong>를 선택해 줘. 이 게시 방식은 PGN 최대 2MB, EPD 최대 512KiB야.</p>
+        </section>
+
+        <section class="upload-panel" aria-labelledby="auth-heading">
+          <div class="panel-heading">
+            <span class="panel-step">02</span>
+            <div><h2 id="auth-heading">GitHub 관리자 인증</h2><p>공개 HTTPS 백엔드 없이 GitHub에 바로 보냄.</p></div>
+          </div>
+          <div class="auth-warning">
+            <strong>관리자 전용 · 중요한 권한</strong>
+            <p>GitHub 저장소 <code>gaong5247-cmd/OpenFishtest</code>에만 권한이 있는 <strong>짧은 만료기간의 Fine-grained PAT</strong>를 사용해. Repository permissions에서 <strong>Contents: Read and write</strong>만 부여하면 돼. 이 토큰은 저장소 변경 권한이 있으니 다른 Contributor에게 주면 안 됨.</p>
+            <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHub 토큰 만들기 ↗</a>
+          </div>
+          <label class="token-label" for="github-token">GitHub Fine-grained PAT</label>
+          <div class="token-field">
+            <input id="github-token" type="password" autocomplete="new-password" placeholder="github_pat_..." spellcheck="false" aria-describedby="token-safety">
+            <button id="check-auth" type="button" class="token-check">권한 확인</button>
+          </div>
+          <p class="token-safety" id="token-safety">토큰은 이 탭의 입력창에만 유지되며 저장하거나 GitHub Pages에 기록하지 않아. 입력 내용은 <strong>api.github.com</strong>으로만 전송돼. 하지만 이 토큰으로 저장소를 수정할 수 있으므로 사용 후 폐기하거나 만료시키는 걸 권장해.</p>
+          <div class="auth-status" role="status" id="auth-status" aria-live="polite">GitHub 인증 필요</div>
+
+          <div class="publish-ready">
+            <label class="agree-control"><input type="checkbox" id="publish-consent"><span>기보와 오프닝북이 공개 GitHub 저장소에 올라간다는 것을 이해했으며, 개인정보·비밀 토큰이 없는 파일만 선택했어.</span></label>
+            <button class="button primary publish-button" id="publish-button" disabled type="button">PGN·EPD 검증 후 게시 시작 ↗</button>
+            <div id="upload-progress" class="upload-progress" role="status" aria-live="polite">두 파일을 선택하고 GitHub 권한을 확인해 줘.</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="upload-info" aria-labelledby="how-heading">
+        <h2 id="how-heading">게시되는 과정</h2>
+        <div class="upload-steps">
+          <article><span>01</span><strong>파일 업로드</strong><p>브라우저에서 기보 두 개를 GitHub 임시 데이터 브랜치에 저장.</p></article>
+          <article><span>02</span><strong>Actions 자동 검사</strong><p>신뢰된 main 코드가 수순·흑백 교대·EPD 일치를 검사. 실행파일·코드는 허용하지 않음.</p></article>
+          <article><span>03</span><strong>바로 공개</strong><p>검증에 통과하면 PGN·EPD와 점수를 사이트에 게시. 실패하면 같은 파일로 다시 시도 가능.</p></article>
+        </div>
+        <div class="upload-disclaimer">
+          PGN 형식이 정상이어도 특정 엔진이 실제로 둔 수인지 독립적으로 증명되지는 않아. 그래서 이 게시물은 <strong>커뮤니티 제출·엔진 출처 미검증</strong> 기록으로 공개하고 공식 Elo 랭킹에는 자동 반영하지 않음. 일반 Contributor는 <a href="./#contribute">원클릭 프로그램과 기존 PR 방식</a>을 계속 이용할 수 있어.
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a class="footer-brand" href="./">♞ OPENFISHTEST</a>
+      <span>GitHub Pages는 정적 사이트이며, 파일은 GitHub 저장소에 보관돼. 토큰은 이 페이지에서 보존되지 않음.</span>
+      <div class="footer-links"><a href="./#community">공개 기보</a><a href="https://github.com/gaong5247-cmd/OpenFishtest/actions/workflows/community-direct-upload.yml" target="_blank" rel="noopener noreferrer">Actions</a></div>
+    </footer>
+  </div>
+  <script src="./upload.js" defer></script>
+</body>
+</html>

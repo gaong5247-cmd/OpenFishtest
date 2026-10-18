@@ -4,6 +4,8 @@
 window.OPENFISHTEST_LOCALES = {
   en: {
     nav_results:"Results",nav_score:"Score math",nav_contribute:"Contribute",
+    nav_upload:"Upload PGN/EPD",hero_upload:"Publish existing PGN ↗",
+    contribute_upload:"Owner: upload existing PGN/EPD ↗",
     hero_eyebrow:"OPEN CHESS ENGINE TESTING / YOUR CPU",
     hero_line1:"One click.",hero_line2:"Let the engines play.",
     hero_desc:"Select trusted UCI engines, donate spare CPU time, and let Fastchess play. When the match ends, only PGN and EPD are automatically submitted through GitHub.",
@@ -102,6 +104,8 @@ window.OPENFISHTEST_LOCALES = {
   },
   ko: {
     nav_results:"대국 결과",nav_score:"점수 계산",nav_contribute:"CPU 기여",
+    nav_upload:"기보 업로드",hero_upload:"기존 기보 게시하기 ↗",
+    contribute_upload:"관리자: 기존 PGN·EPD 게시 ↗",
     hero_eyebrow:"공개 체스 엔진 대국 / 내 CPU로 기여",
     hero_line1:"한 번 클릭.",
     hero_line2:"엔진이 실력으로 증명한다.",

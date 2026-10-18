@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import queue
 import shutil
+import webbrowser
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -22,8 +23,8 @@ class ContributorWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("OpenFishtest · Contributor")
-        self.root.geometry("760x660")
-        self.root.minsize(620, 570)
+        self.root.geometry("760x690")
+        self.root.minsize(620, 600)
         self.events = queue.Queue()
         self.stop_event = threading.Event()
         self.busy = False
@@ -92,7 +93,7 @@ class ContributorWindow:
                      state="readonly").pack(side="left")
 
         ttk.Checkbutton(
-            settings, text="대국 종료 시 PGN·EPD를 GitHub에 자동 제출",
+            settings, text="대국 종료 시 자동 공개 (저장소 소유자는 PR 없이 직접 업로드)",
             variable=self.publish
         ).pack(anchor="w", pady=3)
         ttk.Checkbutton(
@@ -113,6 +114,16 @@ class ContributorWindow:
             command=self._stop, state="disabled"
         )
         self.stop.pack(side="left", padx=(10, 0))
+        quick_actions = ttk.Frame(frame)
+        quick_actions.pack(fill="x", pady=(3, 7))
+        ttk.Button(
+            quick_actions, text="↑ 기존 PGN·EPD 게시 사이트",
+            command=self._open_upload_page
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(
+            quick_actions, text="📂 로컬 대국 결과 폴더",
+            command=self._open_results_folder
+        ).pack(side="left", fill="x", expand=True, padx=(9, 0))
         ttk.Label(frame, textvariable=self.status,
                   font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=4)
 
@@ -129,6 +140,22 @@ class ContributorWindow:
             "'gh auth login'을 실행해야 합니다. GitHub Pages는 "
             "결과 화면만 제공하며, PC에서 UCI 대국을 수행합니다."
         )
+
+    def _open_upload_page(self):
+        # Website only stages data via the owner's explicit GitHub token.
+        # This does not silently upload files or access local disk.
+        webbrowser.open(
+            "https://gaong5247-cmd.github.io/OpenFishtest/upload.html",
+            new=2
+        )
+
+    def _open_results_folder(self):
+        folder = Path.home() / "OpenFishtest-Results"
+        folder.mkdir(exist_ok=True)
+        if os.name == "nt":
+            os.startfile(str(folder))
+        else:
+            webbrowser.open(folder.resolve().as_uri())
 
     def _browse(self, key, pattern, label):
         selected = filedialog.askopenfilename(
