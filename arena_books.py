@@ -80,7 +80,13 @@ def _unique_legal_positions(boards):
 
 def _epd_positions(source):
     seen_records = 0
-    for line_number, line in enumerate(source, 1):
+    line_number = 0
+    while True:
+        # Never call unbounded readline() on a potentially 200 MiB single line.
+        line = source.readline(MAX_LINE_CHARS + 1)
+        if not line:
+            break
+        line_number += 1
         if len(line) > MAX_LINE_CHARS:
             raise InvalidBook(f"EPD line {line_number} exceeds 128 KiB")
         if not line.strip() or line.lstrip().startswith("#"):
