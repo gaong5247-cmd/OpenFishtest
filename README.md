@@ -48,6 +48,28 @@ All PGNs originate from actual submissions. No fake matches, ratings or worker c
 
 ---
 
+## Opening books up to 200 MiB (v0.5.1)
+
+Drag **EPD or PGN** opening books up to **200 MiB (209,715,200 bytes)** into the
+[automatic challenger arena](https://gaong5247-cmd.github.io/OpenFishtest/#arena).
+The 128 MiB limit for EXE/ZIP chess engines stays unchanged.
+
+- The browser streams the book to FastAPI; **no 200 MiB Python bytearray** is created.
+- The uploaded original is temporary and deleted after parsing, even on error.
+- At most **500 distinct legal opening positions** from a bounded input prefix
+  are kept as a small, SHA-256-pinned EPD. Fastchess takes 50 of those positions
+  for its 100 color-reversed games. The full 200 MiB is **not** tested verbatim.
+- Only the first 10,000 records are considered; PGN parsing additionally has a
+  24 MiB / 128 KiB-per-line safety budget. Books with pathological leading
+  records may fail despite being under the file-size cap.
+- The 5 GB server-data target stays in effect. One large upload at a time and
+  a 3-attempt daily upload limit per source help avoid storage exhaustion.
+- The HTTPS Caddy example has **separate 201 MiB book / 129 MiB engine**
+  request limits. Both the API and the website also enforce their own limits.
+
+This functionality only becomes externally available after the owner configures
+and enables a real HTTPS API, a pinned Stockless reference and an isolated arena VM.
+
 ## GitHub Pages: free public website
 
 The website is in the docs directory, with a deployment workflow in .github/workflows/pages.yml.
