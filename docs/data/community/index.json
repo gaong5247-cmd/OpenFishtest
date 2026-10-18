@@ -1,7 +1,43 @@
 {
   "version": 1,
-  "updated_at": "2026-10-18T06:46:19+00:00",
+  "updated_at": "2026-10-18T07:22:38+00:00",
   "entries": [
+    {
+      "id": "213acd52be6f6e15b678",
+      "contributor": "gaong5247-cmd",
+      "submitted_at": "2026-10-18T07:22:35+00:00",
+      "games": 200,
+      "wins": 36,
+      "draws": 16,
+      "losses": 148,
+      "points": 44.0,
+      "penta": [
+        55,
+        12,
+        27,
+        2,
+        4
+      ],
+      "pairs": 100,
+      "book_positions": 500,
+      "book_pair_offset": 0,
+      "pgn_sha256": "24a5f8e99a522aaf6fdb859d89d3bd7468120dffd543cd29c5fb422ff81a1355",
+      "epd_sha256": "50dab65b6be2124daa33e89b12db8ae2a26568ccca5766c6b587a06f13daae78",
+      "verified": false,
+      "verification": "legal_pgn_and_openings_only_engine_execution_unverified",
+      "pgn_path": "docs/data/community/213acd52be6f6e15b678/games.pgn",
+      "epd_path": "docs/data/community/213acd52be6f6e15b678/openings.epd",
+      "source_pr": 26,
+      "backfill": {
+        "actor": "gaong5247-cmd",
+        "triggering_actor": "gaong5247-cmd",
+        "reason": "Administrator approved recovery of existing 200 games from merged PR #26 after contributor quota failure; no new matches.",
+        "expected_head_sha": "5d854dd4e61a8d3099048d9c1aa12259e54638dc",
+        "run_url": "https://github.com/gaong5247-cmd/OpenFishtest/actions/runs/39107406108",
+        "run_attempt": "1",
+        "contributor_daily_limit_exception": true
+      }
+    },
     {
       "id": "8b20974c2b9d3d590d37",
       "contributor": "gaong5247-cmd",
