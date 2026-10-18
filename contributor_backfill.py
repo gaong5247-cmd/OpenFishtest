@@ -136,9 +136,24 @@ def run_backfill(root, submit_now=False, limit=3, skip_remote=False):
 
     if not 1 <= limit <= 3:
         raise ValueError("Automatic publisher permits up to 3 accepted submissions per 24h")
+    now = dt.datetime.now(dt.timezone.utc)
+    already_today = 0
+    for record in ledger["records"].values():
+        if record.get("status") != "submitted":
+            continue
+        try:
+            submitted_at = dt.datetime.fromisoformat(record["submitted_at"])
+            if submitted_at.tzinfo and now - dt.timedelta(days=1) <= submitted_at <= now:
+                already_today += 1
+        except (KeyError, TypeError, ValueError):
+            continue
+    allowance = min(limit, max(0, 3 - already_today))
+    if allowance == 0:
+        print("Local daily quota reached (3 PRs / rolling 24h). Try again tomorrow.")
+        return rows
     successes = 0
     for item in rows:
-        if item["status"] != "ready" or successes >= limit:
+        if item["status"] != "ready" or successes >= allowance:
             continue
         folder = str(Path(item["folder"]).resolve())
         try:
