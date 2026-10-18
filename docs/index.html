@@ -25,6 +25,7 @@
         <a href="#leaderboard" data-i18n="nav_rankings">Leaderboard</a>
         <a href="#tests" data-i18n="nav_tests">Tests</a>
         <a href="#games" data-i18n="nav_games">Watch games</a>
+        <a href="#community" data-i18n="nav_community">Community PGN</a>
         <a href="#workers" data-i18n="nav_workers">Workers</a>
         <a href="#arena" class="nav-repo" data-i18n="nav_join">Participate</a>
         <button type="button" class="lang-button" id="lang-switch" aria-label="Switch language">한국어</button>
@@ -126,6 +127,32 @@
           <tbody id="worker-rows"><tr><td class="empty-state" colspan="5">Loading workers…</td></tr></tbody></table>
         </div>
         <div class="table-footer" data-i18n="workers_note">Only approved public aliases appear. Computer hostnames and worker tokens are never published.</div>
+      </section>
+
+      <section id="community" class="section-card">
+        <div class="section-heading">
+          <div>
+            <span class="section-kicker" data-i18n="community_kicker">05 / AUTO-PUBLISHED DATA</span>
+            <h2 data-i18n="community_title">Community PGN &amp; EPD</h2>
+            <p data-i18n="community_desc">Real contributor-submitted chess games and opening positions, automatically validated and published by GitHub Actions without administrator review.</p>
+          </div>
+          <a class="btn btn-outline" href="https://github.com/gaong5247-cmd/OpenFishtest/blob/main/docs/COMMUNITY_AUTO_PUBLISH.md" target="_blank" rel="noopener noreferrer" data-i18n="community_guide">One-click Contributor guide ↗</a>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr>
+              <th data-i18n="community_author">CONTRIBUTOR</th>
+              <th data-i18n="community_games">GAMES</th>
+              <th data-i18n="community_wdl">W / D / L</th>
+              <th data-i18n="community_points">POINTS</th>
+              <th data-i18n="community_files">FILES</th>
+            </tr></thead>
+            <tbody id="community-rows">
+              <tr><td class="empty-state" colspan="5" data-i18n="community_empty">No automatically published PGN/EPD contributions yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-footer" data-i18n="community_warning">Moves and matched openings are validated. Claimed engine execution and strength are not independently verified. Community results do not affect the official Stockless rankings.</p>
       </section>
 
       <section id="arena" class="community-section">
