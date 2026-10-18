@@ -12,3 +12,11 @@ data/
 worker-config.json
 worker-results/
 *.epd
+
+
+# Allow ONLY the designated community PGN+EPD source PR files and public
+# historical GitHub Pages downloads. Other local match PGNs remain ignored.
+!submissions/*/games.pgn
+!submissions/*/openings.epd
+!docs/data/community/*/games.pgn
+!docs/data/community/*/openings.epd

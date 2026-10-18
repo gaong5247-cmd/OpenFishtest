@@ -4,6 +4,49 @@ An independent, free, open-source **UCI chess engine testing prototype**.
 
 **Stockless is the mandatory, version-pinned reference engine** with an arbitrary Elo coordinate of 3000. All other engines are challengers, and their outcomes must be reported honestly.
 
+## NEW: Github-only Contributor mode (no public HTTPS backend)
+
+**Contributors run trusted local engines and auto-publish PGN + EPD, with NO
+administrator review.** No OpenFishtest server token, static IP, VPN,
+paid server or public HTTPS endpoint is required for the community-data route.
+
+On a Windows PC, install GitHub CLI, Git for Windows, Python 3 and Fastchess.
+Sign in with the Contributor's own GitHub account once with gh auth login,
+then **double-click Start-Contributor.cmd**. Choose locally trusted
+Fastchess, Stockless, challenger executable, and an EPD/PGN opening book.
+A CPU concurrency slider provides a conservative default. Press
+**CPU 기여 시작 · 자동 대국**.
+
+After the actual local Fastchess match finishes, the app checks legal moves,
+reversed colors and opening positions and submits ONLY canonical **PGN+EPD**
+via a data-only GitHub fork PR. The trusted GitHub Actions workflow verifies
+it and directly publishes it to GitHub Pages, then closes the submission PR.
+The owner does not have to manually merge or approve valid data.
+
+See [GitHub-only automatic PGN+EPD publication guide](docs/COMMUNITY_AUTO_PUBLISH.md)
+and the [public community results](https://gaong5247-cmd.github.io/OpenFishtest/#community).
+
+**Security & accuracy:** A submitted legal PGN cannot prove an engine actually
+played it. Auto-published community matches are labeled unverified and NEVER
+automatically alter the official engine Elo/SPRT ranking. Unknown executables
+are not distributed to volunteer PCs or run by GitHub Actions. Contributor
+PRs may only ADD two files and are never merged into main as code.
+
+**Size limits:** each community PR uses a canonical PGN up to 2 MB and
+normalized EPD up to 512 KiB; 2–200 even-numbered games. The separate
+self-hosted arena can still accept up to **200 MiB raw books** if its
+optional HTTPS/VM backend is operated. Contributor mode depends on
+**GitHub as the shared submission host**; it is not peer-to-peer networking
+without any external service.
+
+**Current deployment status:** the GitHub-only automation is code, not a
+claim of already completed real volunteer games. The first actual volunteer
+must run selected engines locally and submit a real PGN/EPD pair. Automatic
+publication needs the repository's Actions contents:write permission and
+permission to trigger the GitHub Pages workflow.
+
+---
+
 **Current v0.2 status:** GitHub Pages dashboard, SQLite/FastAPI, Stockless reference registration, trusted local Fastchess worker job queue, leased paired matches, worker-reported PGN result accounting, 5GB data policy, optional GitHub Releases archives, and static snapshot publishing via GitHub CLI.
 
 **Not yet implemented:** an independently audited public volunteer network, sandboxed execution of arbitrary new engines, cryptographically attested engine execution, official Fishtest GSPRT, automatic one-click worker installation, or a publicly hosted private backend. Actual worker results remain labeled unverified.
