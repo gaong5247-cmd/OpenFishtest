@@ -1,11 +1,11 @@
-"""Backfill existing OpenFishtest-Results/match-* PGN+EPD via GitHub PRs.
+"""Backfill existing PGN+EPD with direct owner uploads or external PRs.
 
 Safety/operational behavior:
 - Dry-run by default: inspect and validate without uploading.
 - --submit explicitly opts in to GitHub PR creation.
 - Never rerun engines or delete local PGNs.
-- One PR per valid match; GitHub auto-publisher quota is 3 accepted PRs per
-  contributor per rolling 24 hours, so default --limit=3.
+- Owner: PR-free GitHub staging branches, up to 25 per CLI batch.
+- External Contributors: existing fork PRs, max 3 accepted per 24h.
 - Local JSON ledger records PR links; public index SHA-256 dedupes already
   published canonical PGNs. Pending local PRs are not resubmitted.
 - No GitHub admin/worker token required; gh auth login is user-scoped.
@@ -14,6 +14,9 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -28,6 +31,23 @@ PUBLIC_INDEX = (
     "https://gaong5247-cmd.github.io/OpenFishtest/"
     "data/community/index.json"
 )
+
+
+def _is_repository_owner():
+    """Recognize the locally logged-in owner without exposing credentials."""
+    if not shutil.which("gh"):
+        return False
+    try:
+        user = subprocess.run(
+            ["gh", "api", "user", "--jq", ".login"],
+            capture_output=True, text=True, timeout=12, check=False,
+            env=os.environ.copy()
+        )
+        return user.returncode == 0 and (
+            user.stdout.strip().casefold() == "gaong5247-cmd"
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _load_ledger(path):
@@ -134,8 +154,16 @@ def run_backfill(root, submit_now=False, limit=3, skip_remote=False):
         print("DRY RUN only. To submit up to 3 validated matches, add --submit.")
         return rows
 
-    if not 1 <= limit <= 3:
-        raise ValueError("Automatic publisher permits up to 3 accepted submissions per 24h")
+    if not 1 <= limit <= 25:
+        raise ValueError("Upload batch size must be between 1 and 25")
+    # The repository owner uses the new PR-free GitHub branch upload
+    # path, so the public Contributor PR's artificial 3/day cap does
+    # not apply. The login is checked again by the staging code and by
+    # the privileged publishing GitHub Action.
+    owner_direct = _is_repository_owner()
+    if not owner_direct and limit > 3:
+        print("External Contributor PR quota: limiting this run to 3")
+        limit = 3
     now = dt.datetime.now(dt.timezone.utc)
     already_today = 0
     for record in ledger["records"].values():
@@ -147,9 +175,9 @@ def run_backfill(root, submit_now=False, limit=3, skip_remote=False):
                 already_today += 1
         except (KeyError, TypeError, ValueError):
             continue
-    allowance = min(limit, max(0, 3 - already_today))
+    allowance = limit if owner_direct else min(limit, max(0, 3 - already_today))
     if allowance == 0:
-        print("Local daily quota reached (3 PRs / rolling 24h). Try again tomorrow.")
+        print("Contributor PR daily quota reached (3 PRs / rolling 24h). Try again tomorrow.")
         return rows
     successes = 0
     for item in rows:
@@ -160,12 +188,15 @@ def run_backfill(root, submit_now=False, limit=3, skip_remote=False):
             url = submit(item["pgn"], item["epd"])
             ledger["records"][folder] = {
                 "status": "submitted", "pgn_sha256": item["pgn_sha256"],
-                "pull_request": url,
+                "submission_url": url,
+                "pull_request": url if "/pull/" in url else None,
+                "via": "owner_direct" if owner_direct else "contributor_pr",
                 "submitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "games": item["games"],
             }
             _write_ledger(ledger_path, ledger)
-            print(f"[SUBMITTED] {Path(folder).name} -> {url}")
+            print(f"[SUBMITTED] {Path(folder).name} "
+                  f"({'NO PR' if owner_direct else 'PR'}) -> {url}")
             successes += 1
         except (SubmissionError, InvalidCommunitySubmission, OSError) as exc:
             print(f"[FAILED] {Path(folder).name}: {exc}", file=sys.stderr)
@@ -183,7 +214,7 @@ def main(argv=None):
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
     parser.add_argument("--submit", action="store_true",
                         help="Actually create PRs (dry-run is the default)")
-    parser.add_argument("--limit", type=int, default=3)
+    parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--skip-remote", action="store_true",
                         help="Skip public GitHub Pages index lookup")
     args = parser.parse_args(argv)
