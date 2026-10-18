@@ -31,6 +31,29 @@ server or volunteers' PCs.** Wine itself is NOT sandboxing; the security
 boundaries are the separate VM, rootless containers, blocked networking,
 read-only engine volumes, quotas and operator oversight.
 
+## 200 MiB opening books (v0.5.1)
+
+The public arena accepts **EPD/PGN files up to 200 MiB** while its EXE/ZIP
+engine limit remains 128 MiB. The upload is streamed into a short-lived file,
+then converted into a small EPD of up to **500 distinct legal positions**;
+the original input file is deleted even if validation fails.
+
+Only a bounded prefix is parsed, rather than loading 200 MiB into RAM:
+up to 10,000 records, at most 24 MiB of PGN input parsed, and a limit of
+128 KiB per text line. Very large PGNs with huge leading comments may be
+rejected even when under 200 MiB. This is a deliberate anti-abuse limit.
+
+Fastchess uses **50 opening pairs = 100 color-reversed games** from the
+normalized EPD. This is *not* full 200 MiB tournament-book coverage or
+training-data ingestion. The original source is not stored for the full
+7-day PGN retention period; only the bounded EPD and its SHA-256 remain.
+
+The [Caddy sample](../deployment/Caddyfile.example) gives book POST requests
+**201 MiB** and engine POST requests **129 MiB**. You must apply the new
+Caddyfile for uploads larger than 129 MiB; changing only browser validation
+will still produce HTTP 413. The 5 GB storage budget remains a soft limit,
+with reserved headroom before accepting a 200 MiB upload.
+
 ## Why the website can say "Backend unavailable"
 
 GitHub Pages is static. A working public upload requires:
