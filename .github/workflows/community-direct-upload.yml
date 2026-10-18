@@ -3,12 +3,9 @@
 # NEVER checkout/execute a community-upload branch or untrusted scripts.
 name: Publish uploaded PGN & EPD (no PR)
 
+# REST create-ref emits a `create` event. It need not be a push.
 on:
-  push:
-    branches:
-      - 'community-upload/**'
-    paths:
-      - 'submissions/**'
+  create:
 
 permissions:
   contents: write
@@ -22,7 +19,7 @@ concurrency:
 
 jobs:
   validate-and-publish:
-    if: github.repository == 'gaong5247-cmd/OpenFishtest' && github.actor == 'gaong5247-cmd'
+    if: github.repository == 'gaong5247-cmd/OpenFishtest' && github.actor == 'gaong5247-cmd' && github.event.ref_type == 'branch' && startsWith(github.event.ref, 'community-upload/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,4 +40,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
         run: python community_direct_upload.py
