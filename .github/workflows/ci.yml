@@ -20,7 +20,10 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m compileall -q server.py jobs_api.py worker.py match_protocol.py engine_stats.py public_games.py arena_core.py candidate_formats.py arena_books.py arena_api.py arena_runner.py archive.py publish_snapshot.py community_submission.py community_publish.py contributor_submit.py contributor_local.py contributor_gui.py tests
+      - run: node --check docs/score.js
       - run: node --check docs/app.js
+      - run: node scripts/test-score.cjs
+      - run: node scripts/test-site.cjs
       - run: node --check docs/i18n.js
       - run: node scripts/check-i18n.cjs
       - run: node --check admin_ui/app.js
