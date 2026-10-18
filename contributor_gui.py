@@ -8,6 +8,10 @@ from __future__ import annotations
 import os
 import queue
 import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
 import webbrowser
 import threading
 import tkinter as tk
@@ -28,6 +32,7 @@ class ContributorWindow:
         self.events = queue.Queue()
         self.stop_event = threading.Event()
         self.busy = False
+        self.local_upload_process = None
         self.paths = {}
         self.games = tk.StringVar(value="100")
         self.tc = tk.StringVar(value="10+0.1")
@@ -142,11 +147,50 @@ class ContributorWindow:
         )
 
     def _open_upload_page(self):
-        # Website only stages data via the owner's explicit GitHub token.
-        # This does not silently upload files or access local disk.
-        webbrowser.open(
-            "https://gaong5247-cmd.github.io/OpenFishtest/upload.html",
-            new=2
+        # GitHub Pages cannot access local gh auth credentials. Spawn a
+        # loopback-only Python uploader, serving the same upload.html
+        # page but sending NO GitHub token to any browser script.
+        url = "http://127.0.0.1:8765/upload.html"
+        if self.local_upload_process is None or self.local_upload_process.poll() is not None:
+            # If the uploader is already running, reuse the same local page.
+            active = False
+            try:
+                with urllib.request.urlopen(
+                    "http://127.0.0.1:8765/api/status", timeout=0.5
+                ) as response:
+                    active = (
+                        response.status == 200 and
+                        response.headers.get("Server", "").startswith(
+                            "OpenFishtestLocalUpload/"
+                        )
+                    )
+            except (OSError, urllib.error.URLError):
+                pass
+            if not active:
+                script = Path(__file__).resolve().parent / "local_upload_server.py"
+                try:
+                    self.local_upload_process = subprocess.Popen(
+                        [sys.executable, str(script), "--no-browser"],
+                        cwd=str(script.parent),
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=(
+                            subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                        ),
+                    )
+                except OSError as exc:
+                    messagebox.showerror(
+                        "업로드 서버 시작 실패",
+                        "localhost 프로그램을 실행할 수 없어: " + str(exc)
+                    )
+                    return
+        self.root.after(
+            950, lambda: webbrowser.open(url, new=2)
+        )
+        self._message(
+            "↑ gh auth login으로 인증하는 로컬 PGN/EPD 업로드 페이지를 열었어. "
+            "정적 github.io에서는 토큰을 입력하지 않아도 돼."
         )
 
     def _open_results_folder(self):
@@ -244,15 +288,27 @@ class ContributorWindow:
                     self._message("오류: " + value)
                     self.status.set("실패 · 로그를 확인하세요")
                 elif kind == "success":
-                    self._message(
-                        "완료! " + (
-                            value.get("pull_request", "로컬 PGN/EPD 생성")
+                    if value.get("submitted"):
+                        url = value.get("publication_url", "")
+                        method = value.get("upload_mode")
+                        if method == "owner_direct":
+                            self._message(
+                                "✓ 대국 완료 → 관리자 GitHub 업로드 접수됨 "
+                                "(PR 없음). Actions 검증 후 공개 예정."
+                            )
+                        else:
+                            self._message(
+                                "✓ 대국 완료 → Contributor PR 자동 제출됨. "
+                                "Actions 검증 후 공개 예정."
+                            )
+                        if url:
+                            self._message("GitHub 게시 진행 확인: " + url)
+                        self.status.set(
+                            "GitHub Actions 검증·게시 대기 중 (로컬 PGN 보존)"
                         )
-                    )
-                    self.status.set(
-                        "GitHub 자동 검증 대기" if value["submitted"]
-                        else "로컬 대국 종료"
-                    )
+                    else:
+                        self._message("✓ 로컬 PGN/EPD 생성 완료")
+                        self.status.set("로컬 대국 종료 · 자동 제출 꺼짐")
                 elif kind == "finished":
                     self.busy = False
                     self.start.configure(state="normal")
@@ -274,6 +330,9 @@ class ContributorWindow:
                 "Fastchess 프로세스를 종료하고 프로그램을 다시 닫으세요."
             )
             return
+        if self.local_upload_process is not None:
+            if self.local_upload_process.poll() is None:
+                self.local_upload_process.terminate()
         self.root.destroy()
 
 

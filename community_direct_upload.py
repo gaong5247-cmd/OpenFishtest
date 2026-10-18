@@ -176,18 +176,43 @@ def publish_staged(gh: GitHub, event: dict, actor: str, repository: str):
     return published_id
 
 
+def normalize_create_event(event: dict, *, ref: str, sha: str):
+    """Normalize the REST-created Git branch webhook to an immutable upload.
+
+    GitHub's REST create-ref operation emits a create webhook, not
+    necessarily push. This source SHA is rechecked against the branch.
+    """
+    if event.get("ref_type") != "branch":
+        raise InvalidCommunitySubmission("Only new branch events are allowed")
+    name = event.get("ref", "")
+    if not isinstance(name, str) or not BRANCH_PATTERN.fullmatch(
+        "refs/heads/" + name
+    ):
+        raise InvalidCommunitySubmission("Invalid upload branch name")
+    if ref != "refs/heads/" + name:
+        raise InvalidCommunitySubmission("GitHub branch ref mismatch")
+    if not HEAD_SHA_PATTERN.fullmatch(sha):
+        raise InvalidCommunitySubmission("GitHub created branch SHA invalid")
+    return {"ref": ref, "after": sha}
+
+
 def main():
     repo = os.getenv("GITHUB_REPOSITORY", "")
     actor = os.getenv("GITHUB_ACTOR", "")
     if repo != REPO or actor.casefold() != OWNER.casefold():
         raise InvalidCommunitySubmission(
-            "Only an authorized OpenFishtest owner push may publish directly"
+            "Only an authorized OpenFishtest owner branch creation may publish directly"
         )
     import json
     with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as fh:
         event = json.load(fh)
+    source = normalize_create_event(
+        event,
+        ref=os.getenv("GITHUB_REF", ""),
+        sha=os.getenv("GITHUB_SHA", ""),
+    )
     gh = GitHub(os.getenv("GITHUB_TOKEN", ""), REPO)
-    published_id = publish_staged(gh, event, actor, repo)
+    published_id = publish_staged(gh, source, actor, repo)
     url = (
         "https://gaong5247-cmd.github.io/OpenFishtest/"
         f"data/community/{published_id}/games.pgn"

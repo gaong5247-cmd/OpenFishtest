@@ -263,10 +263,19 @@ def play_and_submit(fastchess_path, stockless_path, challenger_path, book_path,
                     "games": result.games, "submitted": False}
         if stop_event.is_set():
             raise MatchCancelled("User stopped before GitHub submission")
-        progress("Automatically uploading PGN and EPD via your GitHub account...")
+        progress(
+            "Automatically submitting PGN+EPD using your existing gh auth login. "
+            "Owner: PR-free upload; Contributor: data-only PR."
+        )
         url = submit_to_github(pgn, epd, progress=progress)
-        return {"pgn": str(pgn), "epd": str(epd),
-                "games": result.games, "submitted": True, "pull_request": url}
+        used_pr = "/pull/" in url
+        return {
+            "pgn": str(pgn), "epd": str(epd),
+            "games": result.games, "submitted": True,
+            "publication_url": url,
+            "pull_request": url if used_pr else None,
+            "upload_mode": "pull_request" if used_pr else "owner_direct"
+        }
     finally:
         if proc is not None and proc.poll() is None:
             _kill_proc(proc)

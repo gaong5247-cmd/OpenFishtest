@@ -67,3 +67,14 @@
 .upload-disclaimer a{color:#86e7ca;text-decoration:underline}
 @media(max-width:860px){.upload-grid{grid-template-columns:1fr}.upload-top{padding-top:57px}.upload-panel{padding:21px}}
 @media(max-width:570px){.upload-top{padding:45px 0 20px}.upload-top h1{font-size:39px;letter-spacing:-1.6px}.upload-top>p{font-size:13px}.upload-panel{padding:17px}.token-field{flex-direction:column}.token-check{min-height:43px}.upload-drop{min-height:152px}.upload-steps{grid-template-columns:1fr}.upload-steps article{padding:15px}.upload-info{padding-top:37px}}
+
+
+/* GitHub CLI localhost bridge (no browser token input) */
+.bridge-notice{max-width:950px;margin-bottom:22px;border-color:#3b736d}
+.bridge-notice strong{color:#9debd2}
+.bridge-notice>p{font-size:13px;line-height:1.85;color:#abc4d3}
+.bridge-notice .button{margin-top:8px}
+.bridge-auth-line{display:flex;align-items:center;gap:10px;margin:16px 0}
+.bridge-auth-line .auth-status{flex:1;min-width:0;margin-bottom:0;overflow-wrap:anywhere}
+.bridge-role{background:#143b34;border:1px solid #387c6d;border-radius:9px;padding:13px;color:#adf2d8;font-size:12px;line-height:1.7;min-height:44px}
+@media(max-width:570px){.bridge-auth-line{flex-direction:column;align-items:stretch}}
