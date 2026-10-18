@@ -16,7 +16,7 @@ if errorlevel 1 (
 )
 where gh >nul 2>&1
 if errorlevel 1 (
-  echo GitHub CLI (gh) was not found.
+  echo GitHub CLI gh was not found.
   echo Install GitHub CLI and sign in once using: gh auth login
   pause
   exit /b 1
